@@ -1,0 +1,28 @@
+[package]
+name = "bitling"
+version = "0.1.0"
+description = "A tiny pixel pet that lives in the corner of your screen and reacts to your AI coding agent."
+authors = ["Bitling contributors"]
+license = "MIT"
+repository = "https://github.com/Blazkojj/bitling"
+edition = "2021"
+rust-version = "1.77.2"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+# `macos-private-api` is required for transparent windows on macOS.
+tauri = { version = "2", features = ["macos-private-api"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# Tiny synchronous HTTP server: one thread, no async runtime needed for a
+# handful of local requests per minute.
+tiny_http = "0.12"
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = "s"
+panic = "abort"
+strip = true
