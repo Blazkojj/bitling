@@ -34,6 +34,7 @@ const DRAG_THRESHOLD = 3;
 
 const LABELS: Record<PetState, string> = {
   idle: "Idle",
+  working: "Working",
   done: "Done",
   waiting: "Waiting for you",
   error: "Error",
@@ -61,7 +62,7 @@ function render(): void {
   const now = performance.now();
   const frame = player.frameAt(now);
   const showHud = progress !== null && (hovering || now < hudUntil);
-  renderer.draw(composeScene(player.current, frame, showHud ? toHud(progress!) : undefined));
+  renderer.draw(composeScene(player.current, frame, { hud: showHud ? toHud(progress!) : undefined, level: progress?.level }));
 
   // Sleep until something can change: the next frame or the HUD hiding.
   let wait = player.msUntilNextFrame(now);
@@ -76,7 +77,7 @@ function toHud(p: Progress): Hud {
 
 function setState(state: AgentState): void {
   clearTimeout(calmTimer);
-  const visual: PetState = state === "working" ? "idle" : state;
+  const visual: PetState = state;
   // Re-sending the current state must not restart its animation.
   if (visual !== player.current) {
     player.play(visual, performance.now());

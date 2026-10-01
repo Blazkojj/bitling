@@ -7,11 +7,8 @@ import { Menu } from "@tauri-apps/api/menu";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import type { PetState } from "./sprites.ts";
 
-/**
- * States in the HTTP protocol. `working` means "the agent is busy again"
- * (prompt submitted, tool finished) and is shown as the calm idle animation.
- */
-export type AgentState = PetState | "working";
+/** States in the HTTP protocol; each one has its own animation. */
+export type AgentState = PetState;
 
 export interface Progress {
   xp: number;

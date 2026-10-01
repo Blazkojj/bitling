@@ -9,11 +9,11 @@
 //   .  transparent        B  body            D  body shade
 //   H  body highlight     E  ink (eyes, mouth, antenna stalk)
 //   A  antenna tip        L  legs            P  pink (cheeks, tongue)
-//   R  alert red          W  white
+//   R  alert red          W  white           g/G leaf green (accessories)
 
-export type PetState = "idle" | "done" | "waiting" | "error";
+export type PetState = "idle" | "working" | "done" | "waiting" | "error";
 
-export const PET_STATES: readonly PetState[] = ["idle", "done", "waiting", "error"];
+export const PET_STATES: readonly PetState[] = ["idle", "working", "done", "waiting", "error"];
 
 export const SPRITE_W = 10;
 export const SPRITE_H = 9;
@@ -25,7 +25,7 @@ export type Grid = readonly string[];
 export type Palette = Readonly<Record<string, string>>;
 
 /** Small decorations drawn around the creature (sparkles, "!", sweat drop). */
-export type StampName = "sparkle" | "twinkle" | "bang" | "drop";
+export type StampName = "sparkle" | "twinkle" | "bang" | "drop" | "dot1" | "dot2" | "dot3";
 
 export interface Fx {
   stamp: StampName;
@@ -75,6 +75,8 @@ const COMMON: Palette = {
   b: "#29adff",
   w: "#fff1e8",
   r: "#ff004d",
+  g: "#00e436",
+  G: "#008751",
 };
 
 const palette = (body: string, shade: string, highlight: string, tip: string): Palette => ({
@@ -104,6 +106,10 @@ export const STAMPS: Readonly<Record<StampName, Grid>> = {
     ".",
     "r",
   ],
+  // "thinking..." dots, shown one after another
+  dot1: ["w...."],
+  dot2: ["w.w.."],
+  dot3: ["w.w.w"],
   drop: [
     ".b",
     "bw",
@@ -147,6 +153,34 @@ const IDLE_BLINK: Grid = [
   ".BBEBBEBD.",
   ".BBBBBBBD.",
   ".BBBEEBBD.",
+  "..DDDDDD..",
+  "..L....L..",
+];
+
+// ---------------------------------------------------------------------------
+// working: focused eyes glancing up, busy antenna, "..." thinking dots
+
+const WORK_FOCUS: Grid = [
+  "......A...",
+  ".....E....",
+  "..HHBBBB..",
+  ".BHEBBEBB.",
+  ".BBBBBBBD.",
+  ".BBBBBBBD.",
+  ".BBBBEBBD.",
+  "..DDDDDD..",
+  "..L....L..",
+];
+
+// Antenna tip flashes while it "computes".
+const WORK_FLASH: Grid = [
+  "......W...",
+  ".....E....",
+  "..HHBBBB..",
+  ".BHBEBBEB.",
+  ".BBBBBBBD.",
+  ".BBBBBBBD.",
+  ".BBBBEBBD.",
   "..DDDDDD..",
   "..L....L..",
 ];
@@ -265,6 +299,19 @@ export const ANIMATIONS: Readonly<Record<PetState, Animation>> = {
       { frame: 2, ms: 140 },
     ],
   },
+  working: {
+    palette: palette("#29adff", "#1a75c9", "#a8e4ff", "#ff77a8"),
+    frames: [
+      { sprite: WORK_FOCUS, fx: [{ stamp: "dot1", x: 7, y: -1 }] },
+      { sprite: WORK_FLASH, fx: [{ stamp: "dot2", x: 7, y: -1 }] },
+      { sprite: WORK_FOCUS, fx: [{ stamp: "dot3", x: 7, y: -1 }] },
+    ],
+    steps: [
+      { frame: 0, ms: 420 },
+      { frame: 1, ms: 420 },
+      { frame: 2, ms: 420 },
+    ],
+  },
   done: {
     palette: palette("#00e436", "#008751", "#b8ffc0", "#ffec27"),
     frames: [
@@ -319,3 +366,20 @@ export const ANIMATIONS: Readonly<Record<PetState, Animation>> = {
     ],
   },
 };
+
+// ---------------------------------------------------------------------------
+// Evolutions: accessories earned with levels, drawn on top of the head.
+
+export interface Accessory {
+  minLevel: number;
+  grid: Grid;
+  /** Column (in sprite coordinates) of the accessory's left edge. */
+  x: number;
+}
+
+export const ACCESSORIES: readonly Accessory[] = [
+  // Level 5: a little sprout on the head
+  { minLevel: 5, x: 7, grid: [".g", "gG"] },
+  // Level 10: a tiny crown
+  { minLevel: 10, x: 2, grid: ["y.y", "yyy"] },
+];

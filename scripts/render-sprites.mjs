@@ -18,7 +18,11 @@ import { ANIMATIONS, PET_STATES } from "../src/sprites.ts";
 import { encodePng, parseColor } from "./lib/png.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const args = new Set(process.argv.slice(2));
+const argv = process.argv.slice(2);
+const args = new Set(argv);
+const optionValue = (name) => (argv.includes(name) ? argv[argv.indexOf(name) + 1] : undefined);
+// --skin pastel, --level 10: preview skins and evolutions
+const sceneOpts = { skin: optionValue("--skin"), level: Number(optionValue("--level") ?? 1) };
 
 /** Paints scenes into a grid: rows = states, columns = frames. */
 function renderSheet({ scale, gap, background }) {
@@ -32,7 +36,7 @@ function renderSheet({ scale, gap, background }) {
 
   PET_STATES.forEach((state, row) => {
     ANIMATIONS[state].frames.forEach((_, col) => {
-      const scene = composeScene(state, col);
+      const scene = composeScene(state, col, sceneOpts);
       const ox = gap + col * cellW;
       const oy = gap + row * cellH;
       scene.forEach((color, i) => {
