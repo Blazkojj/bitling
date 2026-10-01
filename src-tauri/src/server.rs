@@ -24,6 +24,8 @@ pub trait EventSink: Send + 'static {
     /// Applies an event and returns the JSON body for the response.
     fn on_event(&self, event: IncomingEvent) -> Value;
     fn snapshot(&self) -> Value;
+    /// Bring the pet window back (a second launch asks the first one).
+    fn show(&self);
 }
 
 /// Binds the port (so the caller learns about "address in use" right away)
@@ -88,6 +90,10 @@ fn route(
             json!({ "ok": true, "app": "bitling", "version": env!("CARGO_PKG_VERSION") }),
         ),
         (Method::Get, "/state") => (200, sink.snapshot()),
+        (Method::Post, "/show") => {
+            sink.show();
+            (200, json!({ "ok": true }))
+        }
         (Method::Post, "/event") => {
             let is_json = content_type
                 .is_some_and(|ct| ct.to_ascii_lowercase().starts_with("application/json"));
@@ -100,9 +106,35 @@ fn route(
                 Err(message) => (400, error(&message)),
             }
         }
-        (_, "/" | "/health" | "/state" | "/event") => (405, error("method not allowed")),
+        (_, "/" | "/health" | "/state" | "/event" | "/show") => (405, error("method not allowed")),
         _ => (404, error("not found")),
     }
+}
+
+/// True if another Bitling already answers on `port`; it is asked to show itself.
+/// Used as a single-instance fallback that works without D-Bus.
+pub fn wake_existing(port: u16) -> bool {
+    use std::io::Write;
+    use std::net::TcpStream;
+    use std::time::Duration;
+    let ask = |request: &str| -> Option<String> {
+        let mut stream =
+            TcpStream::connect_timeout(&([127, 0, 0, 1], port).into(), Duration::from_millis(500))
+                .ok()?;
+        stream
+            .set_read_timeout(Some(Duration::from_millis(800)))
+            .ok()?;
+        stream.write_all(request.as_bytes()).ok()?;
+        let mut reply = String::new();
+        let _ = stream.read_to_string(&mut reply);
+        Some(reply)
+    };
+    let health = ask("GET /health HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n");
+    if !health.is_some_and(|r| r.contains("\"app\":\"bitling\"")) {
+        return false;
+    }
+    ask("POST /show HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Type: application/json\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{}");
+    true
 }
 
 fn error(message: &str) -> Value {
@@ -126,6 +158,7 @@ mod tests {
         fn snapshot(&self) -> Value {
             json!({ "state": "idle" })
         }
+        fn show(&self) {}
     }
 
     const JSON: Option<&str> = Some("application/json");

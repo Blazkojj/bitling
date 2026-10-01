@@ -4,7 +4,8 @@
 //!
 //! 1. Bitling's own, agent-agnostic format (sent by `hooks/bitling-hook.mjs`,
 //!    `scripts/demo.mjs`, or plain `curl`):
-//!    `{"state": "done", "source": "claude-code", "message": "optional text"}`
+//!    `{"state": "done", "source": "claude-code", "message": "optional text",
+//!      "session": "optional id, so several agent sessions can share one pet"}`
 //!
 //! 2. A raw Claude Code hook payload, e.g. from an `"type": "http"` hook that
 //!    posts straight to Bitling without any script:
@@ -21,7 +22,7 @@ const MAX_MESSAGE_CHARS: usize = 200;
 pub enum AgentState {
     /// Nothing going on.
     Idle,
-    /// The agent is busy again (prompt submitted, tool finished). Shown as idle.
+    /// The agent is busy (prompt submitted, tool finished).
     Working,
     /// The agent finished its task.
     Done,
@@ -36,6 +37,8 @@ pub struct IncomingEvent {
     pub state: AgentState,
     pub source: String,
     pub message: Option<String>,
+    /// Agent session the event belongs to (Claude Code's `session_id`).
+    pub session: Option<String>,
 }
 
 /// Parses a request body. `Ok(None)` means "valid, but nothing to show"
@@ -56,6 +59,7 @@ pub fn parse_event(body: &[u8]) -> Result<Option<IncomingEvent>, String> {
                 .take(40)
                 .collect(),
             message: str_field(&value, "message").map(trim_message),
+            session: str_field(&value, "session").map(short_id),
         }));
     }
 
@@ -70,7 +74,10 @@ pub fn parse_event(body: &[u8]) -> Result<Option<IncomingEvent>, String> {
 /// Keep in sync with the event table in `scripts/install-hooks.mjs`.
 fn from_claude_hook(event: &str, payload: &Value) -> Option<IncomingEvent> {
     let (state, message) = match event {
-        "Stop" => (AgentState::Done, None),
+        "Stop" => (
+            AgentState::Done,
+            str_field(payload, "last_assistant_message").and_then(first_line),
+        ),
         "Notification" => {
             // The field name differs between Claude Code versions.
             let kind =
@@ -96,7 +103,24 @@ fn from_claude_hook(event: &str, payload: &Value) -> Option<IncomingEvent> {
         state,
         source: "claude-code".into(),
         message: message.map(trim_message),
+        session: str_field(payload, "session_id").map(short_id),
     })
+}
+
+/// First non-empty line of a (markdown) reply, without leading markup.
+/// Used as the speech bubble after a finished task.
+pub fn first_line(text: &str) -> Option<&str> {
+    text.lines()
+        .map(|line| {
+            line.trim()
+                .trim_start_matches(['#', '*', '-', '>', '`', ' '])
+                .trim()
+        })
+        .find(|line| !line.is_empty())
+}
+
+fn short_id(id: &str) -> String {
+    id.chars().take(64).collect()
 }
 
 fn str_field<'a>(value: &'a Value, key: &str) -> Option<&'a str> {
@@ -188,6 +212,22 @@ mod tests {
         .unwrap();
         assert_eq!(event.state, AgentState::Error);
         assert_eq!(event.message.as_deref(), Some("Exit code 1"));
+    }
+
+    #[test]
+    fn sessions_and_done_summary() {
+        let event = parse(
+            r#"{"hook_event_name":"Stop","session_id":"abc","last_assistant_message":"\n## Fixed the login bug\n\nDetails..."}"#,
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(event.session.as_deref(), Some("abc"));
+        assert_eq!(event.message.as_deref(), Some("Fixed the login bug"));
+
+        let event = parse(r#"{"state":"waiting","session":"s1"}"#)
+            .unwrap()
+            .unwrap();
+        assert_eq!(event.session.as_deref(), Some("s1"));
     }
 
     #[test]
