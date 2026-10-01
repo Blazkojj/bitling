@@ -14,10 +14,14 @@
     "app:build": "tauri build",
     "demo": "node scripts/demo.mjs",
     "hooks:install": "node scripts/install-hooks.mjs",
-    "hooks:uninstall": "node scripts/install-hooks.mjs --uninstall"
+    "hooks:uninstall": "node scripts/install-hooks.mjs --uninstall",
+    "sprites": "node scripts/render-sprites.mjs",
+    "test": "npm run test:js && npm run test:rust",
+    "test:js": "node --test scripts/lib/claude-settings.test.mjs",
+    "test:rust": "cargo test --manifest-path src-tauri/Cargo.toml"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=20.19"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.12.1"
