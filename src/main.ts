@@ -23,6 +23,12 @@ const DEMO_SEQUENCE: ReadonlyArray<[PetState, number]> = [
 
 /** How long the level / XP bar stays visible after earning XP. */
 const HUD_FLASH_MS = 3000;
+/**
+ * "working" events (prompt sent, tool finished) arrive often. They only calm
+ * the pet down once the current reaction was visible for at least this long,
+ * so e.g. a failed tool call followed by a quick retry still shows the error.
+ */
+const MIN_REACTION_MS = 2000;
 /** Mouse travel (px) before a press turns into a window drag instead of a click. */
 const DRAG_THRESHOLD = 3;
 
@@ -43,8 +49,10 @@ let progress: Progress | null = null;
 let serverNote: string | null = null;
 let hovering = false;
 let hudUntil = 0;
+let shownSince = 0;
 let frameTimer: ReturnType<typeof setTimeout> | undefined;
 let demoTimer: ReturnType<typeof setTimeout> | undefined;
+let calmTimer: ReturnType<typeof setTimeout> | undefined;
 
 // ---------------------------------------------------------------------------
 // Rendering
@@ -67,10 +75,25 @@ function toHud(p: Progress): Hud {
 }
 
 function setState(state: AgentState): void {
+  clearTimeout(calmTimer);
   const visual: PetState = state === "working" ? "idle" : state;
   // Re-sending the current state must not restart its animation.
-  if (visual !== player.current) player.play(visual, performance.now());
+  if (visual !== player.current) {
+    player.play(visual, performance.now());
+    shownSince = performance.now();
+  }
   render();
+}
+
+/** Applies a state reported by the agent (see MIN_REACTION_MS). */
+function applyAgentState(state: AgentState): void {
+  const remaining = shownSince + MIN_REACTION_MS - performance.now();
+  if (state === "working" && player.current !== "idle" && remaining > 0) {
+    clearTimeout(calmTimer);
+    calmTimer = setTimeout(() => setState("working"), remaining);
+    return;
+  }
+  setState(state);
 }
 
 function flashHud(ms = HUD_FLASH_MS): void {
@@ -178,7 +201,7 @@ async function main(): Promise<void> {
   await onPetEvent((event) => {
     progress = event.progress;
     stopDemo(); // a real agent event always wins over the demo loop
-    setState(event.state);
+    applyAgentState(event.state);
     if (event.levelUp) flashHud(HUD_FLASH_MS * 2);
     else if (event.state === "done") flashHud();
   });
