@@ -4,55 +4,66 @@
 
 **A tiny pixel pet that lives in the corner of your screen and reacts to your AI coding agent.**
 
-It cheers when Claude Code finishes a task, jumps up with a big **!** when it needs your approval,
-and breaks into a sweat when something fails. Stop babysitting the terminal.
+It thinks while Claude works, waves a big **!** when it needs your approval, sweats when something
+breaks, and throws confetti when the job is done. Stop babysitting the terminal.
 
-<img src="docs/states.gif" alt="Bitling's four moods: idle, waiting for you, done, error" width="444">
+<img src="docs/states.gif" alt="Bitling's moods: idle, working, waiting for you, done, error" width="552">
 
-`idle` · `waiting for you` · `done` · `error`
+`idle` · `working` · `waiting for you` · `done` · `error`
+
+[Download](https://github.com/Blazkojj/bitling/releases) · [Quick start](#quick-start) · [How it works](#how-it-works) · [Make it yours](#make-it-yours)
 
 </div>
 
 ## Demo
 
-> 🎬 **Demo GIF coming soon:** Bitling sitting next to a real Claude Code session.
+A real Claude Code run: the test fails (Bitling sweats), Claude fixes the bug, the tests pass, and
+Bitling levels up and grows a sprout.
 
-<!--
-  Record it with `npm run app` + `npm run demo -- --loop` (or a real Claude Code task),
-  save it as docs/demo.gif and replace the quote above with:
-  <p align="center"><img src="docs/demo.gif" alt="Bitling reacting to Claude Code" width="720"></p>
--->
+<p align="center"><img src="docs/demo.gif" alt="Bitling reacting to a real Claude Code session" width="840"></p>
 
 ## Why
 
-Coding agents work for minutes at a time, and then quietly wait for you. Bitling turns that
-into something you notice from the corner of your eye:
+Coding agents work for minutes at a time, and then quietly wait for you. Bitling turns that into
+something you notice from the corner of your eye, without notifications nagging you:
 
-| Bitling is... | because Claude Code... |
+| Bitling... | because your agent... |
 | --- | --- |
-| 🟦 **calm**, blinking and swaying | is working, or nothing is going on |
-| 🟨 **alarmed**, wide eyes and a bouncing **!** | needs your permission or an answer |
-| 🟩 **happy**, jumping between sparkles | finished the task |
-| ⬜ **pale**, X-eyed and sweating | hit an error (failed tool call, API error) |
+| 🟦 blinks and sways | is idle |
+| 🟦 thinks "..." | is working |
+| 🟨 jumps with a bouncing **!** | needs your permission or an answer |
+| 🟩 cheers between sparkles | finished the task |
+| ⬜ goes pale, X-eyed and sweating | hit an error |
 
-Every finished task earns XP, and your Bitling levels up over time.
+A speech bubble tells you *what* happened ("Bash wants to run `npm test`", "Fixed the login bug").
+Every finished task earns XP; your Bitling levels up, grows a sprout at level 5 and a crown at
+level 10.
 
 ## Features
 
-- 🪟 Tiny transparent window, always on top, no frame, drag it anywhere
-- 🎨 Hand-made 10×9 pixel art drawn in code: sprites are ASCII art you can edit in a PR
-- 🔌 Hooks into Claude Code in one command, with a backup of your settings
-- 🌐 Simple local HTTP API (`127.0.0.1:47800`), so any tool or agent can drive it
-- ⭐ XP and levels, saved in a plain JSON file
-- 🪶 Light: Tauri 2 + plain TypeScript and Canvas, no frontend framework, no 60 fps loop
-- 🖥️ Windows, macOS and Linux via Tauri (so far tested on Linux; macOS/Windows reports welcome!)
+- 🪟 Tiny transparent window, always on top, drag it anywhere, clicks pass through around it
+- 💬 Speech bubbles with the agent's message, 🎵 optional chiptune sounds
+- 🎨 Hand-made 10×9 pixel art drawn in code, 4 skins (Classic, Pastel, Midnight, Game Boy)
+- ⭐ XP, levels, evolutions and a confetti party on level-up
+- 🔌 Works with **Claude Code** (one click, no Node.js needed), **Gemini CLI** and **Codex CLI**
+- 👥 Several agent sessions at once: a session waiting for you always wins
+- 🧭 Tray icon, remembers its position, launch at login
+- 🌐 Simple local HTTP API, so any tool, script or CI job can drive it
+- 🪶 Tauri 2 + plain TypeScript, no frontend framework, a few MB, no 60 fps loop
 
 ## Quick start
 
-Prebuilt downloads are on the [roadmap](#roadmap). For now, run it from source:
+### Download
 
-**Prerequisites:** [Node.js](https://nodejs.org) 20.19+, [Rust](https://rustup.rs), and the
-[Tauri system dependencies](https://v2.tauri.app/start/prerequisites/) for your OS.
+Grab the installer for Windows, macOS or Linux from
+[Releases](https://github.com/Blazkojj/bitling/releases), start Bitling, then **right-click the
+pet → Connect Claude Code…** It shows what it will change, backs up your settings and adds the
+hooks. Restart Claude Code and give it a task.
+
+### From source
+
+Needs [Node.js](https://nodejs.org) 20.19+, [Rust](https://rustup.rs) and the
+[Tauri system dependencies](https://v2.tauri.app/start/prerequisites/).
 
 ```bash
 git clone https://github.com/Blazkojj/bitling.git
@@ -61,117 +72,82 @@ npm install
 npm run app            # Bitling appears in the bottom-right corner
 ```
 
-Then, in another terminal, connect it to Claude Code:
+Then connect your agent, either from the pet's right-click menu (Claude Code) or from a terminal:
 
 ```bash
-npm run hooks:install  # shows the changes, asks first, backs up your settings
+npm run hooks:install                    # Claude Code
+npm run hooks:install -- --agent gemini  # Gemini CLI
+npm run hooks:install -- --agent codex   # Codex CLI
 ```
 
-Restart Claude Code (or open `/hooks`) and give Claude a task. That's it.
-
-> **No agent at hand?** `npm run demo` plays through every state, see [Try it without an agent](#try-it-without-an-agent).
+> **No agent at hand?** Right-click → **Play demo**, or `npm run demo`.
 
 ## Using Bitling
 
 | Action | What it does |
 | --- | --- |
-| **Drag** | Move the pet anywhere |
-| **Click** | "Seen it": calm the pet back to idle |
+| **Drag** | Move the pet (it remembers where) |
+| **Click** | "Seen it": calm the pet down, dismiss the bubble |
 | **Hover** | Show level and XP bar |
-| **Right-click** | Menu: level, demo mode, pick a state, quit |
-| **1 2 3 4** / **D** | Idle / done / waiting / error / toggle demo mode (when the pet has focus) |
+| **Right-click** / tray icon | Demo, states, skins, sounds, bubbles, launch at login, connect/disconnect Claude Code, quit |
+| Keys **1–5**, **D**, **S**, **L** | Idle / done / waiting / error / working, demo, next skin, level-up party (when focused) |
 
 ## How it works
 
 ```
-Claude Code ──hook──▶ node ~/.bitling/bitling-hook.mjs done ──HTTP POST──▶ Bitling (127.0.0.1:47800)
+Claude Code ──HTTP hook──────────────────────────────▶ Bitling (127.0.0.1:47800)
+Gemini CLI / Codex ──▶ node ~/.bitling/bitling-hook.mjs ─┘
 ```
 
-`npm run hooks:install` copies a small, dependency-free hook script to `~/.bitling/` and registers
-it in `~/.claude/settings.json` for these [Claude Code hook events](https://code.claude.com/docs/en/hooks):
+**Claude Code.** "Connect Claude Code…" in the app adds `type: "http"` hooks to
+`~/.claude/settings.json` that post straight to Bitling. `npm run hooks:install` does the same
+with a small, dependency-free Node script instead. Either way, a timestamped backup is saved and
+the other one's hooks are cleaned up.
 
-| Hook event | Pet state |
+| Claude Code event | Bitling |
 | --- | --- |
-| `Stop` | done |
+| `UserPromptSubmit`, `PostToolUse` | working |
 | `Notification` (`permission_prompt`, `elicitation_dialog`) | waiting |
-| `StopFailure`, `PostToolUseFailure` | error |
-| `UserPromptSubmit`, `PostToolUse` | working (calm again) |
+| `PostToolUseFailure`, `StopFailure` | error |
+| `Stop` | done (+10 XP, bubble with the first line of Claude's answer) |
 
-Frequent hooks run in the background (`async: true`), so Claude Code never waits for the pet. The
-end-of-turn ones (`Stop`, `StopFailure`) run inline, because Claude Code may exit right after them
-(e.g. `claude -p`) and would kill a background hook; they take about 0.1 s. The script never prints
-to stdout, always exits with code 0 and gives up after 1.5 s, so a closed Bitling can't break your
-agent.
+**Gemini CLI** hooks `BeforeAgent`, `AfterTool`, `Notification` (`ToolPermission`) and
+`AfterAgent` in `~/.gemini/settings.json`. **Codex CLI** gets one `notify` line in
+`~/.codex/config.toml` (Codex only reports finished turns).
 
-Useful flags: `npm run hooks:install -- --dry-run` (just print the result),
-`-- --settings .claude/settings.local.json` (one project only), `-- --yes` (no prompt).
-Remove everything with `npm run hooks:uninstall`.
+Hooks never get in the agent's way: they return in ~0.1 s, never print to stdout (except the `{}`
+Gemini expects), always exit 0 and give up after 1.5 s when Bitling isn't running.
 
-## Try it without an agent
+Remove everything with right-click → **Disconnect Claude Code**, or
+`npm run hooks:uninstall [-- --agent gemini|codex]`.
 
-With the app running:
+## HTTP API
 
-```bash
-npm run demo              # a short story through every state
-npm run demo -- --loop    # keep looping, e.g. while recording a GIF
-npm run demo -- waiting   # set one state
-```
-
-Or talk to the HTTP API directly:
+Bitling listens on `127.0.0.1` only, so anything can make it react: a long build, a deploy, your
+test watcher.
 
 ```bash
 curl -X POST http://127.0.0.1:47800/event \
   -H "Content-Type: application/json" \
-  -d '{"state": "done", "source": "my-script", "message": "Build finished"}'
+  -d '{"state": "done", "source": "ci", "message": "Deploy finished 🚀"}'
 ```
-
-You can also tweak the art without the desktop app: `npm run dev` and open
-`http://localhost:1420/?demo` (or `?state=waiting`, `?hud`) in your browser.
-
-## HTTP API
-
-Bitling listens on `127.0.0.1` only.
 
 | Route | Description |
 | --- | --- |
-| `POST /event` | `{"state": "idle" \| "working" \| "done" \| "waiting" \| "error", "source"?: string, "message"?: string}` |
-| `GET /state` | Current state and XP |
+| `POST /event` | `{"state": "idle" \| "working" \| "done" \| "waiting" \| "error", "source"?, "message"?, "session"?}`, or a raw Claude Code hook payload |
+| `GET /state` | Current state, XP and active sessions |
 | `GET /health` | `{"ok": true, "app": "bitling", "version": "..."}` |
+| `POST /show` | Bring the window back |
 
-`POST /event` requires `Content-Type: application/json`. It also accepts raw Claude Code hook
-payloads, so instead of the script you can point an
-[HTTP hook](https://code.claude.com/docs/en/hooks) straight at Bitling (no Node.js needed):
-
-```json
-{
-  "hooks": {
-    "Stop": [{ "hooks": [{ "type": "http", "url": "http://127.0.0.1:47800/event" }] }]
-  }
-}
-```
-
-Want Bitling to react to another agent or tool (Codex, Gemini CLI, Aider, your CI...)? Anything
-that can send that one request works. Adapters are very welcome!
-
-## XP and levels
-
-Each finished task (`done`) is worth 10 XP, and each level needs 50 XP more than the previous one
-(level 2 at 50 XP, level 3 at 150, level 4 at 300...). Progress lives in `~/.bitling/state.json`.
-Demo events don't count.
-
-## Configuration
-
-| Environment variable | Default | |
-| --- | --- | --- |
-| `BITLING_PORT` | `47800` | Port of the local API (set it for the app *and* the hooks) |
-| `BITLING_HOME` | `~/.bitling` | Where the hook script and `state.json` live |
-| `BITLING_DEMO` | unset | `1` starts the app in demo mode |
+`POST` requires `Content-Type: application/json`, which websites can't send cross-origin, so no web
+page can poke your pet. Events with `"source": "demo"` don't earn XP.
 
 ## Make it yours
 
 The sprites are plain text in [`src/sprites.ts`](src/sprites.ts): one character per pixel, a
-palette per state, and a list of frames with timings. Edit, save, and `npm run dev` reloads.
-`npm run sprites` re-exports the preview images (`-- --gif` for the animated one; needs Node 22.18+).
+palette per state, and a list of frames with timings. Skins live in [`src/skins.ts`](src/skins.ts),
+evolutions in `ACCESSORIES`. Edit, save, and `npm run dev` reloads in the browser
+(`http://localhost:1420/?demo`, or `?state=waiting&skin=gameboy&level=12&say=Hi`).
 
 ```
 ......A...
@@ -185,33 +161,47 @@ palette per state, and a list of frames with timings. Edit, save, and `npm run d
 ..L....L..
 ```
 
+`npm run sprites -- --gif` re-exports the preview (Node 22.18+). New skins, moods and evolutions
+are the best kind of PR.
+
+## Settings and files
+
+Everything lives in `~/.bitling/`: `state.json` (XP, stats), `config.json` (skin, sound, bubbles,
+position) and the hook script.
+
+| Environment variable | Default | |
+| --- | --- | --- |
+| `BITLING_PORT` | `47800` | Port of the local API (set it for the app *and* the hooks) |
+| `BITLING_HOME` | `~/.bitling` | Data directory |
+| `BITLING_DEMO` | unset | `1` starts in demo mode |
+
 ## Roadmap
 
-- [x] Transparent always-on-top pet with 4 animated states
-- [x] Claude Code hooks + one-command installer
-- [x] Local HTTP API, demo mode
-- [x] XP and levels
-- [ ] Prebuilt binaries for Windows, macOS and Linux (GitHub Releases)
-- [ ] Install hooks from the app itself (no Node.js needed)
-- [ ] "Working" animation while the agent is busy
-- [ ] Speech bubble with the last message ("Bash needs permission")
-- [ ] Remember window position, tray icon, launch at login
-- [ ] Multiple sessions / agents at once
-- [ ] Adapters for other agents (Codex CLI, Gemini CLI, Cursor, Aider...)
-- [ ] Sound effects (opt-in), more skins, level-up evolutions
+- [x] Transparent always-on-top pet with animated states, speech bubbles, sounds
+- [x] Claude Code: one-click connect from the app, Node installer as an alternative
+- [x] Gemini CLI and Codex CLI adapters
+- [x] XP, levels, evolutions, level-up party, skins
+- [x] Multiple sessions, tray, remembered position, launch at login, single instance
+- [x] Prebuilt installers via GitHub Actions
+- [ ] More agents (Cursor, Aider, OpenCode...) and editor extensions
+- [ ] More moods (sleepy at night, bored when idle for long), more evolutions
+- [ ] Signed and notarized builds, auto-update
+- [ ] Bitling friends: one pet per project
 
 ## Troubleshooting
 
-- **The pet has a black box around it (Linux).** Transparent windows need a compositing window
-  manager (GNOME, KDE and most modern desktops have one).
-- **"Port 47800 unavailable" in the right-click menu.** Another Bitling (or another app) is using
-  the port. Close it, or set `BITLING_PORT` for both the app and Claude Code.
-- **Nothing happens when Claude works.** Restart Claude Code after installing the hooks, check
-  them with `/hooks`, and make sure `node` is on your `PATH`. Test the pipe with `npm run demo`.
+- **Black box around the pet (Linux).** Transparent windows need a compositing window manager
+  (GNOME, KDE and most modern desktops have one).
+- **Nothing happens when Claude works.** Restart Claude Code after connecting, check `/hooks`, and
+  test the pipe with `npm run demo` or the curl above.
+- **"Port 47800 unavailable".** Another app uses the port: set `BITLING_PORT` for both the app and
+  the hooks.
+- **macOS says the app is from an unidentified developer.** Builds aren't notarized yet:
+  right-click the app → Open.
 
 ## Contributing
 
-Issues and PRs are welcome, especially new sprites, agent adapters and platform fixes.
+Issues and PRs are welcome, especially sprites, skins, agent adapters and platform fixes.
 
 ```bash
 npm run dev      # frontend only, in the browser

@@ -1,166 +1,145 @@
 # Bitling: development notes
 
-Working notes for whoever continues (human or agent). The README is the user-facing doc;
-this file records *why* things are the way they are and what to do next.
+Working notes for contributors. The README is the user-facing doc; this file records *why*
+things are the way they are, what has been verified, and what to do next.
 
-## Status after session 1 (2026-10-01)
+## Status (v0.2.0, 2026-10-01)
 
-MVP is done and verified on Linux:
+The whole original roadmap is implemented:
 
-- Tauri 2 app: transparent, frameless, always-on-top, hidden from taskbar/Dock, placed in the
-  bottom-right corner of the primary screen, draggable, right-click menu.
-- Pet with 4 animated states (idle, done, waiting, error), 2-4 frames each, plus hover HUD
-  (level + XP bar).
-- Local HTTP endpoint `127.0.0.1:47800` (`/event`, `/state`, `/health`).
-- Claude Code hook script + installer (backup, confirmation, uninstall, dry run).
-- Demo mode: `npm run demo` (over HTTP), right-click menu "Demo mode", keys 1-4/D,
-  `?demo` in the browser, `BITLING_DEMO=1`.
-- XP/levels persisted in `~/.bitling/state.json`.
+- 5 animated states (idle, working, waiting, done, error), speech bubbles, optional sounds.
+- XP and levels, evolutions (sprout at 5, crown at 10), confetti on level-up, 4 skins.
+- Claude Code: one-click "Connect" from the app (HTTP hooks, no Node) or `npm run hooks:install`.
+- Gemini CLI and Codex CLI adapters (`--agent gemini|codex`).
+- Multiple agent sessions, tray icon, native menu, remembered position, launch at login,
+  single instance, click-through outside the pet.
+- CI and a tag-triggered release workflow producing installers for all three platforms.
+- `docs/demo.gif` is a real recording (Claude Code `-p` run, see "Recording the demo").
 
-### What was actually verified
+### Verified (Linux, Xvfb)
 
-- `npm test`: 6 JS tests (settings merge) + 13 Rust tests (protocol, XP, routing).
-- `npm run build` (tsc + vite) and `npx tauri build --no-bundle` (release binary ~3.7 MB).
-- Dev and release binaries run under Xvfb: HTTP events switch states, HUD appears after `done`,
-  window lands in the corner. (Xvfb has no compositor, so the background is black there; that is
-  expected.)
-- **Real Claude Code 2.1.287 end-to-end** (`claude -p` with `--settings` produced by the
-  installer): `UserPromptSubmit` and `PostToolUse` → working, `PostToolUseFailure` → error,
-  `Stop` → done (+10 XP).
-- Installer: fresh install, reinstall (no duplicates), uninstall restores the original file,
-  backups never overwrite each other, invalid JSON is refused, no TTY without `--yes` is refused.
+- `npm test`: 10 JS tests + 21 Rust tests; `cargo clippy -D warnings`, `cargo fmt --check`.
+- Real Claude Code 2.1.287 end-to-end, both with the Node script hooks and with the app's HTTP
+  hooks: UserPromptSubmit/PostToolUse → working, PostToolUseFailure → error with the traceback in
+  the bubble, Stop → done with the first line of Claude's answer, +10 XP, level-up.
+- Native menu, "Connect Claude Code" dialog (backup written, hooks added), single-instance
+  fallback, position saved and restored, multi-session priority (waiting wins).
+- Simulated Codex `notify` and Gemini `AfterTool`/`AfterAgent` payloads through the hook script.
 
 ### Not verified yet
 
-- macOS and Windows (transparency, `macOSPrivateApi`, drag, hooks under PowerShell).
-- A real desktop with a compositor (transparency, drag on Wayland).
-- The `Notification` / `permission_prompt` hook from a live interactive session (`-p` mode
-  never asks for permission). The payload field is documented both as `notification_type` and
-  `type`; both are handled.
+- macOS and Windows builds (the release workflow has never run: push a `v0.2.0` tag).
+- Tray icon display (the container has no D-Bus / tray host), autostart, the D-Bus based
+  single-instance plugin, click-through with a real window manager / Wayland.
+- Real Gemini CLI and Codex CLI sessions (only their documented payloads were tested).
+- Sounds (no audio device in the container).
+- The `Notification`/`permission_prompt` hook from a live interactive session.
 
 ## Architecture
 
 ```
-hooks/bitling-hook.mjs        hook script (copied to ~/.bitling/ by the installer)
-scripts/install-hooks.mjs     CLI: add/remove hooks in Claude Code settings
-scripts/lib/claude-settings   pure merge logic + node:test tests
+hooks/bitling-hook.mjs        hook script for Claude/Gemini/Codex (copied to ~/.bitling/)
+scripts/install-hooks.mjs     CLI installer (--agent claude|gemini|codex)
+scripts/lib/claude-settings   pure merge logic for all agents + node:test tests
 scripts/demo.mjs              drives a running app over HTTP
 scripts/render-sprites.mjs    PNG/GIF/icon export from the sprite data
-src/sprites.ts                ASCII pixel art, palettes, frame timings (pure data)
-src/scene.ts                  frame → 16x18 color grid: outline, shadow, HUD (pure, DOM-free)
+src/sprites.ts                ASCII pixel art, palettes, frames, accessories (pure data)
+src/skins.ts                  palette overrides per skin
+src/scene.ts                  frame → 16x18 color grid: outline, shadow, HUD, confetti (pure)
 src/animation.ts              steps through frames in real time
 src/renderer.ts               paints a scene on the canvas (DPR-aware)
+src/sound.ts                  WebAudio jingles
 src/bridge.ts                 all Tauri calls; no-ops in a plain browser
-src/main.ts                   wiring: input, demo mode, agent events
-src-tauri/src/main.rs         window setup, commands, shared state
-src-tauri/src/server.rs       tiny_http endpoint + routing (unit tested)
+src/main.ts                   wiring: input, bubbles, demo, agent events, hit regions
+src-tauri/src/main.rs         setup, plugins, commands, shared state
+src-tauri/src/server.rs       tiny_http endpoint + routing, single-instance fallback
 src-tauri/src/protocol.rs     JSON event parsing, raw Claude Code payload mapping
-src-tauri/src/progress.rs     XP curve, state.json persistence
+src-tauri/src/sessions.rs     multi-session aggregation
+src-tauri/src/progress.rs     XP curve, state.json
+src-tauri/src/config.rs       config.json (skin, sound, bubbles, position)
+src-tauri/src/claude_hooks.rs "Connect Claude Code" (HTTP hooks, backup)
+src-tauri/src/menu.rs         one native menu for tray + right-click
+src-tauri/src/window.rs       placement, position memory, click-through polling
 ```
 
-Data flow: agent hook → `POST /event` → Rust (`AppSink::on_event`: update state, XP, save) →
-Tauri event `bitling:event` → `main.ts` → `AnimationPlayer` → `composeScene` → canvas.
+Data flow: hook → `POST /event` → `AppSink::on_event` (sessions, XP, save) → Tauri event
+`bitling:event` (aggregated `state` + this event's `eventState` + message) → `main.ts`.
 
 ## Decisions
 
-1. **Tauri 2 + Vite + plain TypeScript.** Small binary, native transparency, no frontend
-   framework. Vite is a dev tool only; the shipped JS is ~35 KB (mostly `@tauri-apps/api`).
-2. **Sprites are ASCII grids in code** (`src/sprites.ts`), one char per pixel, per-state
-   palettes. Easy to review and to contribute new art in a PR. The outline is computed
-   (`scene.ts`: any transparent pixel 4-adjacent to art), so the art stays simple and readable on
-   light and dark wallpapers.
-3. **Scene size 16x18 big pixels × 8 = 128x144 window.** The 10x9 sprite sits at (3, 6);
-   the space around it is for effects (sparkles, "!", sweat drop), the ground shadow, and the HUD
-   row at the bottom. Changing it means updating `SCENE_W/H` and `tauri.conf.json`.
-4. **Scene composition is pure and DOM-free**, shared by the app and the Node export script.
-   Node imports the `.ts` files directly (type stripping), hence `allowImportingTsExtensions`
-   + `erasableSyntaxOnly` in tsconfig (no enums, no parameter properties), and Node 22.18+ for
-   `npm run sprites`.
-5. **No 60 fps loop.** `main.ts` sleeps with `setTimeout` until the next frame change; identical
-   frames are not repainted.
-6. **Protocol is agent-agnostic**: states `idle | working | done | waiting | error`. `working`
-   means "agent busy again" and currently renders as idle. Which agent event maps to which state is
-   decided by the *installer* (the state is the hook script's argument), so it is visible and
-   editable in the user's settings.json. The Rust side additionally maps raw Claude Code payloads
-   for `"type": "http"` hooks; that table (`protocol.rs::from_claude_hook`) must be kept in sync
-   with `HOOK_EVENTS` in `scripts/lib/claude-settings.mjs`.
-7. **Hook script in Node, not shell.** Claude Code runs hooks in bash *or* PowerShell (Windows
-   without Git Bash); a Node script works in both, and the installer already needs Node. The
-   command is `node "<path>" <state>` with forward slashes and double quotes so it survives bash,
-   PowerShell and cmd. The script is copied to `~/.bitling/` so the repo can be moved.
-8. **Script first, HTTP hooks as an alternative.** The brief asked for a hook script; it also
-   works with Claude Code versions that predate `type: "http"` hooks. The endpoint accepts raw
-   hook payloads anyway, which is the path to a Node-free install for binary users (see next
-   steps).
-9. **Hook timing:** frequent hooks (`UserPromptSubmit`, `PostToolUse`, `PostToolUseFailure`,
-   `Notification`) are `async: true`. `Stop` and `StopFailure` run inline with `timeout: 5`,
-   because the real test showed `claude -p` exits right after `Stop` and kills async hooks.
-   The script always exits 0, never writes stdout (Claude Code parses it; exit code 2 on `Stop`
-   would even block), and has a hard 2 s cap.
-10. **`PostToolUse` → working** is what clears "waiting" after the user approves a tool: there
-    is no "permission resolved" event. Cost: one short Node process per tool call (async).
-11. **Reactions stay on screen ≥ 2 s** (`MIN_REACTION_MS` in `main.ts`): a `working` event only
-    calms the pet once the current state was visible for 2 s, so quick failure → retry does not
-    flicker.
-12. **Security:** bind to 127.0.0.1 only; `POST /event` requires `Content-Type:
-    application/json`, which browsers can't send cross-origin without a CORS preflight (never
-    answered), so websites can't drive the pet. No auth token (local, cosmetic impact only).
-    Body capped at 1 MiB, messages trimmed to 200 chars.
-13. **XP:** 10 per `done`; total XP for level L is `25·L·(L−1)` (each level needs 50 more than
-    the previous). Events with `source: "demo"` don't count. Stats count done/waiting/error.
-14. **Data lives in `~/.bitling/`** (`state.json`, `bitling-hook.mjs`), not the OS app-data
-    dir: one discoverable folder next to `~/.claude`. `BITLING_HOME` overrides it (tests too).
-    Writes are atomic (tmp + rename); a corrupt file is moved to `state.json.corrupt`.
-15. **Window placement:** starts hidden, positioned from `inner_size()` (on Linux `outer_size()`
-    is 0x0 until mapped), then shown. Quit lives in the right-click menu because there is no
-    frame, taskbar entry or Dock icon (`ActivationPolicy::Accessory` on macOS).
-16. **Click vs drag:** a press becomes `startDragging()` after 3 px of movement; a plain click
-    calms the pet to idle ("seen it").
-17. Bundle identifier `io.github.blazkojj.bitling` (must not end in `.app` for macOS).
+1. **Tauri 2 + Vite + plain TypeScript.** Small binary, native transparency, no framework.
+2. **Sprites are ASCII grids**; the outline is computed in `scene.ts`, so art stays editable.
+   Skins only override palette characters; accessories are stamped on the head row detected per
+   frame, so they follow jumps and squashes.
+3. **Scene composition is pure and DOM-free**, shared with the Node export script (type
+   stripping: `.ts` imports, `erasableSyntaxOnly`, Node 22.18+ for `npm run sprites`).
+4. **Window 240x224** with the 128x144 canvas bottom-right and the bubble above it. Everything but
+   the canvas and the bubble is click-through: the frontend reports hit rectangles
+   (`set_hit_regions`), a Rust thread polls the cursor every 50 ms and toggles
+   `set_ignore_cursor_events`. Without a global cursor position (some Wayland setups) the window
+   simply stays clickable.
+5. **One native menu in Rust** (`menu.rs`) for the tray and the right-click popup
+   (`popup_menu_at`, the plain `popup_menu` showed a 1x1 menu on Linux). Menu actions that touch
+   the animation are sent to the frontend as `bitling:command`.
+6. **Connect from the app writes `type: "http"` hooks** (`?via=bitling` marks them). No Node
+   needed, nothing to spawn per tool call. The Node installer stays for Gemini/Codex and for
+   people who prefer command hooks; both installers recognise and remove each other's hooks.
+   `serde_json` uses `preserve_order` so the user's settings keep their key order.
+7. **Hook timing (Node script):** frequent hooks are `async`; `Stop`/`StopFailure` run inline with
+   a 5 s timeout because `claude -p` kills background hooks at exit (found in a real run). HTTP
+   hooks are always inline but take ~1 ms locally.
+8. **Real payload quirks:** `PostToolUseFailure` sends `error` (docs say `tool_error`);
+   Notification's type field is documented both as `notification_type` and `type`. All handled.
+9. **Sessions:** a waiting session always wins, otherwise the newest event; sessions expire after
+   2 h; clicking the pet clears them (`acknowledge`). The bubble describes the event itself, not
+   the aggregate.
+10. **Reactions stay ≥ 2 s** before a `working` event calms the pet (no flicker on fail → retry).
+11. **Single instance:** `tauri-plugin-single-instance` (needs D-Bus on Linux) plus a fallback: if
+    the port is taken by a Bitling (`/health`), the new process calls `/show` and exits.
+12. **Position memory by polling** `outer_position()` every 1.5 s; "moved" events fire hundreds
+    of times per drag and not at all on some Linux setups.
+13. **Security:** 127.0.0.1 only; `POST` requires `application/json` (no CORS preflight is ever
+    answered, so web pages can't drive the pet); bodies ≤ 1 MiB; messages trimmed to 200 chars.
+14. **XP:** 10 per done, level L needs `25·L·(L−1)` total XP; `source: "demo"` earns nothing.
+15. **Data in `~/.bitling/`** (state, config, hook script); `BITLING_HOME` overrides.
+16. **Sounds are synthesized** (WebAudio square/triangle waves), off by default.
 
 ## Known issues / edge cases
 
-- Several Claude Code sessions share one pet: the last event wins.
-- Async hooks could in theory arrive out of order (a late `PostToolUse` after `Stop` would calm
-  the pet 2 s after "done"). Unlikely, since the final reply is generated after the last tool.
-  Fix if needed: sequence numbers or timestamps from the hook script.
-- A second instance can't bind the port; it runs without the endpoint and says so in the
-  right-click menu. No single-instance guard yet.
-- Window position is not remembered between runs.
-- `npm run sprites` needs Node 22.18+ while everything else needs 20.19+.
-- No CI yet.
+- macOS builds are not signed/notarized (Gatekeeper warning). Needs an Apple developer account.
+- Codex's `notify` only fires on finished turns: no waiting/error for Codex.
+- Gemini hooks were written against the documented format only.
+- If the user already has a Codex `notify`, the installer refuses instead of chaining.
+- Async hook events could in theory arrive out of order (only with the Node script).
 
-## Next steps (suggested order)
+## Next steps
 
-1. **Record the real demo GIF** (`docs/demo.gif`, pet next to a Claude Code session) and
-   replace the placeholder in the README. `npm run demo -- --loop` helps.
-2. **CI + releases:** GitHub Actions running `npm run build` and `npm test` on Linux/macOS/
-   Windows; a release workflow with `tauri-apps/tauri-action` producing `.dmg`, `.msi`/`.exe`,
-   `.AppImage`/`.deb`. Prebuilt binaries are the biggest win for "easy install".
-3. **Install hooks from the app** (Rust port of the installer, native confirm dialog, backup),
-   writing `type: "http"` hooks so binary users need no Node.js.
-4. **Test on macOS and Windows**; fix transparency/drag/hook quirks.
-5. Single-instance guard (`tauri-plugin-single-instance`), remember window position, tray icon,
-   launch at login.
-6. A real **working** animation (typing / thinking) instead of reusing idle.
-7. **Speech bubble** with `message` (e.g. "Bash needs permission"); the data already flows to the
-   frontend (`PetEvent.message`).
-8. **Multi-session awareness** via `session_id`: e.g. stay "waiting" while any session waits.
-9. Adapters for other agents (Codex CLI, Gemini CLI, Cursor, Aider); the HTTP API is ready.
-10. Level-up celebration, evolutions/skins, optional sounds.
+1. Push a `v0.2.0` tag, check the release workflow on all platforms, publish the draft release.
+2. Test on macOS and Windows (transparency, click-through, tray, autostart, PowerShell hooks).
+3. Signing/notarization and the Tauri updater.
+4. More agents: Cursor hooks, Aider, OpenCode; a VS Code extension that posts to the API.
+5. More moods: sleepy at night, bored after long idle, happy streaks.
+6. Per-project pets (one Bitling per repository / session).
+
+## Recording the demo
+
+`docs/demo.gif` was recorded under Xvfb: Bitling + an xterm running `claude -p ... --output-format
+stream-json --verbose` piped through a tiny formatter, captured with
+`ffmpeg -f x11grab -draw_mouse 0` and converted with a 96-color palette. Without a compositor the
+window background is black, so a dark terminal theme makes it look seamless. A recording on a
+real desktop (transparent window over a wallpaper) would look even better.
 
 ## Handy commands
 
 ```bash
-npm install
-npm run dev                 # frontend in the browser: http://localhost:1420/?demo | ?state=error | ?hud
-npm run app                 # desktop app (Vite + tauri dev)
-npm run demo                # story through all states (app must run)
-npm run hooks:install -- --dry-run
+npm run dev                 # browser: http://localhost:1420/?demo | ?state=error&skin=gameboy&level=12
+npm run app                 # desktop app
+npm run demo                # story through all states over HTTP (app must run)
+npm run hooks:install -- --dry-run [--agent gemini|codex]
 npm test                    # JS + Rust tests
-npm run sprites -- --preview --gif   # docs/preview-*.png (ignored) + docs/states.gif
-node scripts/render-sprites.mjs --icon && npx tauri icon src-tauri/app-icon.png
+npm run sprites -- --preview --gif [--skin midnight --level 12]
 npx tauri build --no-bundle # release binary in src-tauri/target/release/
+git tag v0.2.0 && git push origin v0.2.0   # build installers on GitHub
 ```
 
 Linux build deps (Ubuntu 24.04): `libwebkit2gtk-4.1-dev build-essential libssl-dev

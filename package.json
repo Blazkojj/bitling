@@ -1,7 +1,7 @@
 {
   "name": "bitling",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "A tiny pixel pet that lives in the corner of your screen and reacts to your AI coding agent.",
   "license": "MIT",
   "type": "module",
