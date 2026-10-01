@@ -84,7 +84,11 @@ fn from_claude_hook(event: &str, payload: &Value) -> Option<IncomingEvent> {
         }
         "PermissionRequest" => (AgentState::Waiting, str_field(payload, "tool_name")),
         "StopFailure" => (AgentState::Error, str_field(payload, "error_message")),
-        "PostToolUseFailure" => (AgentState::Error, str_field(payload, "tool_error")),
+        "PostToolUseFailure" => {
+            // Documented as `tool_error`; Claude Code 2.1 actually sends `error`.
+            let error = str_field(payload, "error").or_else(|| str_field(payload, "tool_error"));
+            (AgentState::Error, error)
+        }
         "UserPromptSubmit" | "PostToolUse" => (AgentState::Working, None),
         _ => return None,
     };
@@ -172,6 +176,18 @@ mod tests {
             Some(AgentState::Working)
         );
         assert_eq!(state(r#"{"hook_event_name":"SessionEnd"}"#), None);
+    }
+
+    #[test]
+    fn tool_failure_message_from_real_payload() {
+        // Shape captured from Claude Code 2.1.287.
+        let event = parse(
+            r#"{"hook_event_name":"PostToolUseFailure","tool_name":"Bash","error":"Exit code 1","is_interrupt":false}"#,
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(event.state, AgentState::Error);
+        assert_eq!(event.message.as_deref(), Some("Exit code 1"));
     }
 
     #[test]

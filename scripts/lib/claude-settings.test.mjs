@@ -10,11 +10,16 @@ import {
 
 const SCRIPT = "/home/me/.bitling/bitling-hook.mjs";
 
-test("adds one async hook per event to empty settings", () => {
+test("adds one hook per event to empty settings", () => {
   const result = addBitlingHooks({}, SCRIPT);
   assert.equal(countBitlingHooks(result), HOOK_EVENTS.length);
+  // End of turn: inline with a timeout, so it finishes before Claude Code exits.
   assert.deepEqual(result.hooks.Stop, [
-    { hooks: [{ type: "command", command: `node "${SCRIPT}" done`, async: true }] },
+    { hooks: [{ type: "command", command: `node "${SCRIPT}" done`, timeout: 5 }] },
+  ]);
+  // Everything else runs in the background.
+  assert.deepEqual(result.hooks.PostToolUse, [
+    { hooks: [{ type: "command", command: `node "${SCRIPT}" working`, async: true }] },
   ]);
   assert.equal(result.hooks.Notification[0].matcher, "permission_prompt|elicitation_dialog");
 });

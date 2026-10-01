@@ -8,16 +8,21 @@ export const HOOK_MARKER = "bitling-hook.mjs";
  * Claude Code hook events Bitling listens to and the pet state each one sets.
  * Keep in sync with `from_claude_hook()` in src-tauri/src/protocol.rs.
  * See https://code.claude.com/docs/en/hooks
+ *
+ * Hooks run in the background (`async`) so Claude never waits for the pet,
+ * except the end-of-turn ones: Claude Code may exit right after them (e.g.
+ * `claude -p`), which kills background hooks before they report. The script
+ * takes ~0.1 s and is capped at 2 s, so running those inline is cheap.
  */
 export const HOOK_EVENTS = [
-  { event: "Stop", state: "done", why: "Claude finished its task" },
+  { event: "Stop", state: "done", inline: true, why: "Claude finished its task" },
   {
     event: "Notification",
     matcher: "permission_prompt|elicitation_dialog",
     state: "waiting",
     why: "Claude needs your approval or input",
   },
-  { event: "StopFailure", state: "error", why: "the turn died on an API error" },
+  { event: "StopFailure", state: "error", inline: true, why: "the turn died on an API error" },
   { event: "PostToolUseFailure", state: "error", why: "a tool call failed" },
   { event: "UserPromptSubmit", state: "working", why: "you sent a prompt (calms the pet)" },
   { event: "PostToolUse", state: "working", why: "a tool finished (clears 'waiting')" },
@@ -63,12 +68,10 @@ export function removeBitlingHooks(settings) {
 export function addBitlingHooks(settings, scriptPath) {
   const { settings: result } = removeBitlingHooks(settings);
   result.hooks ??= {};
-  for (const { event, matcher, state } of HOOK_EVENTS) {
-    const group = {
-      ...(matcher ? { matcher } : {}),
-      // async: Claude Code doesn't wait for the pet, ever.
-      hooks: [{ type: "command", command: hookCommand(scriptPath, state), async: true }],
-    };
+  for (const { event, matcher, state, inline } of HOOK_EVENTS) {
+    const command = hookCommand(scriptPath, state);
+    const hook = inline ? { type: "command", command, timeout: 5 } : { type: "command", command, async: true };
+    const group = { ...(matcher ? { matcher } : {}), hooks: [hook] };
     result.hooks[event] = [...(result.hooks[event] ?? []), group];
   }
   return result;

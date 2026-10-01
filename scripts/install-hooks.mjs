@@ -75,7 +75,7 @@ async function main() {
     }
     console.log(`  ${existing} Bitling hook(s) will be removed. Your other settings stay as they are.`);
   } else {
-    console.log("  These hooks will be added. They run in the background and never block Claude:\n");
+    console.log("  These hooks will be added (each one takes ~0.1 s and never blocks Claude):\n");
     const names = HOOK_EVENTS.map(({ event, matcher }) => (matcher ? `${event} (${matcher})` : event));
     const width = Math.max(...names.map((n) => n.length));
     HOOK_EVENTS.forEach(({ state, why }, i) => {
