@@ -1,12 +1,13 @@
 #!/usr/bin/env node
-// Connects Bitling to Claude Code by adding hooks to its settings.json.
+// Connects Bitling to your coding agent by adding hooks to its settings.
 //
-//   npm run hooks:install                 add / update the hooks
-//   npm run hooks:uninstall               remove them again
+//   npm run hooks:install                 Claude Code (~/.claude/settings.json)
+//   npm run hooks:install -- --agent gemini   Gemini CLI (~/.gemini/settings.json)
+//   npm run hooks:install -- --agent codex    Codex CLI (~/.codex/config.toml)
+//   npm run hooks:uninstall [-- --agent ...]  remove them again
 //   ... -- --yes                          don't ask for confirmation
 //   ... -- --dry-run                      only print the resulting settings
-//   ... -- --settings <file>              use another settings file, e.g.
-//                                         .claude/settings.local.json for one project
+//   ... -- --settings <file>              use another settings file
 //
 // Before writing, it shows exactly what will change, asks for confirmation and
 // saves a timestamped backup of the settings file next to it.
@@ -19,9 +20,12 @@ import readline from "node:readline/promises";
 import { fileURLToPath } from "node:url";
 import {
   addBitlingHooks,
+  addCodexNotify,
   countBitlingHooks,
+  GEMINI_HOOK_EVENTS,
   HOOK_EVENTS,
   removeBitlingHooks,
+  removeCodexNotify,
 } from "./lib/claude-settings.mjs";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -33,7 +37,7 @@ const option = (name) => {
 };
 
 if (flag("--help") || flag("-h")) {
-  console.log(fs.readFileSync(fileURLToPath(import.meta.url), "utf8").split("\n").slice(1, 13).join("\n"));
+  console.log(fs.readFileSync(fileURLToPath(import.meta.url), "utf8").split("\n").slice(1, 14).join("\n"));
   process.exit(0);
 }
 
@@ -41,9 +45,19 @@ const uninstall = flag("--uninstall");
 const dryRun = flag("--dry-run");
 const assumeYes = flag("--yes") || flag("-y");
 
-// Claude Code keeps user settings in ~/.claude unless CLAUDE_CONFIG_DIR says otherwise.
-const claudeDir = process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), ".claude");
-const settingsPath = path.resolve(option("--settings") ?? path.join(claudeDir, "settings.json"));
+const agent = option("--agent") ?? "claude";
+const AGENTS = {
+  // Claude Code keeps user settings in ~/.claude unless CLAUDE_CONFIG_DIR says otherwise.
+  claude: { name: "Claude Code", file: path.join(process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), ".claude"), "settings.json"), restart: "Restart Claude Code (or open /hooks) so it picks up the new hooks." },
+  gemini: { name: "Gemini CLI", file: path.join(os.homedir(), ".gemini", "settings.json"), restart: "Restart Gemini CLI so it picks up the new hooks." },
+  codex: { name: "Codex CLI", file: path.join(process.env.CODEX_HOME || path.join(os.homedir(), ".codex"), "config.toml"), restart: "Codex reads config.toml at startup: start a new session." },
+};
+if (!AGENTS[agent]) {
+  console.error(`Unknown --agent "${agent}". Use one of: ${Object.keys(AGENTS).join(", ")}`);
+  process.exit(1);
+}
+const { name: agentName } = AGENTS[agent];
+const settingsPath = path.resolve(option("--settings") ?? AGENTS[agent].file);
 // The hook script is copied out of the repo so the clone can be moved or deleted.
 const bitlingDir = process.env.BITLING_HOME || path.join(os.homedir(), ".bitling");
 const hookSource = path.join(repoRoot, "hooks", "bitling-hook.mjs");
@@ -58,12 +72,25 @@ main().catch((err) => {
   process.exit(1);
 });
 
-async function main() {
+/** What will be written, computed up front so it can be shown before asking. */
+function plan() {
+  if (agent === "codex") {
+    const current = fs.existsSync(settingsPath) ? fs.readFileSync(settingsPath, "utf8") : "";
+    const existing = removeCodexNotify(current).removed;
+    const text = uninstall ? removeCodexNotify(current).toml : addCodexNotify(current, hookTarget);
+    const events = [{ event: "notify (after every turn)", state: "done", why: "Codex finished its turn" }];
+    return { existing, text, events };
+  }
   const current = readSettings(settingsPath);
-  const existing = countBitlingHooks(current);
-  const next = uninstall ? removeBitlingHooks(current).settings : addBitlingHooks(current, hookTarget);
+  const next = uninstall ? removeBitlingHooks(current).settings : addBitlingHooks(current, hookTarget, agent);
+  const events = agent === "gemini" ? GEMINI_HOOK_EVENTS : HOOK_EVENTS;
+  return { existing: countBitlingHooks(current), text: `${JSON.stringify(next, null, 2)}\n`, events };
+}
 
-  console.log(c.bold(uninstall ? "\nRemove Bitling from Claude Code\n" : "\nConnect Bitling to Claude Code\n"));
+async function main() {
+  const { existing, text, events } = plan();
+
+  console.log(c.bold(uninstall ? `\nRemove Bitling from ${agentName}\n` : `\nConnect Bitling to ${agentName}\n`));
   console.log(`  Settings file  ${settingsPath}${fs.existsSync(settingsPath) ? "" : c.dim(" (will be created)")}`);
   if (!uninstall) console.log(`  Hook script    ${hookTarget}`);
   console.log();
@@ -75,18 +102,18 @@ async function main() {
     }
     console.log(`  ${existing} Bitling hook(s) will be removed. Your other settings stay as they are.`);
   } else {
-    console.log("  These hooks will be added (each one takes ~0.1 s and never blocks Claude):\n");
-    const names = HOOK_EVENTS.map(({ event, matcher }) => (matcher ? `${event} (${matcher})` : event));
+    console.log("  These hooks will be added (each one takes ~0.1 s and never blocks the agent):\n");
+    const names = events.map(({ event, matcher }) => (matcher ? `${event} (${matcher})` : event));
     const width = Math.max(...names.map((n) => n.length));
-    HOOK_EVENTS.forEach(({ state, why }, i) => {
+    events.forEach(({ state, why }, i) => {
       console.log(`    ${names[i].padEnd(width)}  → ${state.padEnd(8)} ${c.dim(why)}`);
     });
     if (existing > 0) console.log(c.yellow(`\n  ${existing} existing Bitling hook(s) will be replaced.`));
   }
 
   if (dryRun) {
-    console.log(c.bold("\n  --dry-run: resulting settings.json\n"));
-    console.log(JSON.stringify(next, null, 2));
+    console.log(c.bold(`\n  --dry-run: resulting ${path.basename(settingsPath)}\n`));
+    console.log(text);
     return;
   }
 
@@ -104,17 +131,17 @@ async function main() {
     fs.copyFileSync(hookSource, hookTarget);
   }
   fs.mkdirSync(path.dirname(settingsPath), { recursive: true });
-  fs.writeFileSync(settingsPath, `${JSON.stringify(next, null, 2)}\n`);
+  fs.writeFileSync(settingsPath, text);
 
   console.log(c.green(`\n  ✔ ${uninstall ? "Bitling hooks removed." : "Bitling hooks installed."}`));
   if (uninstall) {
     console.log(c.dim(`    Your XP is kept in ${bitlingDir}.\n`));
     return;
   }
-  console.log("    Restart Claude Code (or open /hooks) so it picks up the new hooks.");
+  console.log(`    ${AGENTS[agent].restart}`);
   console.log(
     (await bitlingIsRunning())
-      ? c.green("    Bitling is running and listening. Go give Claude a task!\n")
+      ? c.green("    Bitling is running and listening. Go give your agent a task!\n")
       : c.yellow("    Bitling is not running yet: start it with `npm run app`.\n"),
   );
 }

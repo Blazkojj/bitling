@@ -1,5 +1,7 @@
-// Pure helpers that add/remove Bitling's hooks in a Claude Code settings object.
-// No file system access here, so they are easy to test (claude-settings.test.mjs).
+// Pure helpers that add/remove Bitling's hooks in an agent's settings: Claude
+// Code and Gemini CLI share the same JSON hooks layout; Codex uses one TOML
+// `notify` line. No file system access here, so they are easy to test
+// (claude-settings.test.mjs).
 
 /** Every hook command Bitling installs contains this, which is how we find ours again. */
 export const HOOK_MARKER = "bitling-hook.mjs";
@@ -29,11 +31,24 @@ export const HOOK_EVENTS = [
 ];
 
 /**
+ * Gemini CLI hook events (https://geminicli.com/docs/hooks/reference).
+ * AfterTool covers failures too: the hook script switches to "error" when the
+ * tool response carries an error. Gemini timeouts are in milliseconds.
+ */
+export const GEMINI_HOOK_EVENTS = [
+  { event: "AfterAgent", state: "done", why: "Gemini finished its turn" },
+  { event: "Notification", matcher: "ToolPermission", state: "waiting", why: "Gemini needs your approval" },
+  { event: "BeforeAgent", state: "working", why: "you sent a prompt" },
+  { event: "AfterTool", state: "working", why: "a tool finished (or failed: error)" },
+];
+
+/**
  * The shell command for one hook. Forward slashes work for Node on Windows
  * too and avoid backslash-escaping surprises in Git Bash / PowerShell.
  */
-export function hookCommand(scriptPath, state) {
-  return `node "${scriptPath.replaceAll("\\", "/")}" ${state}`;
+export function hookCommand(scriptPath, state, source) {
+  const base = `node "${scriptPath.replaceAll("\\", "/")}" ${state}`;
+  return source ? `${base} --source ${source}` : base;
 }
 
 /** Query string the app's own "Connect Claude Code" puts on its HTTP hook URLs. */
@@ -69,13 +84,21 @@ export function removeBitlingHooks(settings) {
   return { settings: result, removed };
 }
 
-/** Returns a copy of `settings` with Bitling's hooks (re)installed. */
-export function addBitlingHooks(settings, scriptPath) {
+/**
+ * Returns a copy of `settings` with Bitling's hooks (re)installed.
+ * `agent` is "claude" (default) or "gemini".
+ */
+export function addBitlingHooks(settings, scriptPath, agent = "claude") {
   const { settings: result } = removeBitlingHooks(settings);
   result.hooks ??= {};
-  for (const { event, matcher, state, inline } of HOOK_EVENTS) {
-    const command = hookCommand(scriptPath, state);
-    const hook = inline ? { type: "command", command, timeout: 5 } : { type: "command", command, async: true };
+  const gemini = agent === "gemini";
+  for (const { event, matcher, state, inline } of gemini ? GEMINI_HOOK_EVENTS : HOOK_EVENTS) {
+    const command = hookCommand(scriptPath, state, gemini ? "gemini" : undefined);
+    const hook = gemini
+      ? { name: `bitling-${state}`, type: "command", command, timeout: 5000 }
+      : inline
+        ? { type: "command", command, timeout: 5 }
+        : { type: "command", command, async: true };
     const group = { ...(matcher ? { matcher } : {}), hooks: [hook] };
     result.hooks[event] = [...(result.hooks[event] ?? []), group];
   }
@@ -85,4 +108,38 @@ export function addBitlingHooks(settings, scriptPath) {
 /** Counts Bitling hook commands currently present in `settings`. */
 export function countBitlingHooks(settings) {
   return removeBitlingHooks(settings).removed;
+}
+
+// ---------------------------------------------------------------------------
+// Codex CLI: a single root-level `notify = [...]` line in ~/.codex/config.toml.
+// Codex runs it after every turn and appends a JSON payload as the last argument.
+
+/** The `notify` line Bitling adds to config.toml. */
+export function codexNotifyLine(scriptPath) {
+  const path = scriptPath.replaceAll("\\", "/");
+  return `notify = ["node", "${path}", "done", "--source", "codex"] # bitling`;
+}
+
+const NOTIFY_RE = /^\s*notify\s*=/;
+
+/**
+ * Adds the notify line. Root keys must come before any [table], so it goes at
+ * the top. Throws if the user already has their own `notify` (Codex allows one).
+ */
+export function addCodexNotify(toml, scriptPath) {
+  const lines = removeCodexNotify(toml).toml.split("\n");
+  if (lines.some((line) => NOTIFY_RE.test(line))) {
+    throw new Error("config.toml already has a `notify` command; Codex supports only one. Remove it or chain it first.");
+  }
+  const rest = lines.join("\n").replace(/^\n+/, "");
+  return `${codexNotifyLine(scriptPath)}\n${rest ? `\n${rest}` : ""}`;
+}
+
+/** Removes Bitling's notify line (and only that one). */
+export function removeCodexNotify(toml) {
+  const lines = (toml ?? "").split("\n");
+  const kept = lines.filter((line) => !(NOTIFY_RE.test(line) && line.includes(HOOK_MARKER)));
+  const removed = lines.length - kept.length;
+  const text = kept.join("\n");
+  return { toml: removed ? text.replace(/^\n+/, "") : text, removed };
 }

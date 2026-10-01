@@ -2,6 +2,9 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   addBitlingHooks,
+  addCodexNotify,
+  GEMINI_HOOK_EVENTS,
+  removeCodexNotify,
   countBitlingHooks,
   HOOK_EVENTS,
   hookCommand,
@@ -71,4 +74,30 @@ test("also removes the HTTP hooks added by the app", () => {
     hooks: { Stop: [{ hooks: [{ type: "http", url: "http://127.0.0.1:47800/event?via=bitling" }] }] },
   };
   assert.deepEqual(removeBitlingHooks(settings), { settings: {}, removed: 1 });
+});
+
+test("Gemini CLI hooks use names, ms timeouts and --source gemini", () => {
+  const result = addBitlingHooks({}, SCRIPT, "gemini");
+  assert.equal(countBitlingHooks(result), GEMINI_HOOK_EVENTS.length);
+  assert.deepEqual(result.hooks.AfterAgent[0].hooks[0], {
+    name: "bitling-done",
+    type: "command",
+    command: `node "${SCRIPT}" done --source gemini`,
+    timeout: 5000,
+  });
+  assert.equal(result.hooks.Notification[0].matcher, "ToolPermission");
+});
+
+test("Codex notify line goes before tables and comes off cleanly", () => {
+  const toml = 'model = "o4"\n\n[mcp_servers.x]\ncommand = "y"\n';
+  const added = addCodexNotify(toml, SCRIPT);
+  assert.ok(added.startsWith(`notify = ["node", "${SCRIPT}", "done", "--source", "codex"]`));
+  assert.ok(added.indexOf("notify") < added.indexOf("[mcp_servers.x]"));
+  // Re-adding replaces instead of duplicating.
+  assert.equal(addCodexNotify(added, SCRIPT).match(/notify/g).length, 1);
+  assert.equal(removeCodexNotify(added).toml.trim(), toml.trim());
+});
+
+test("Codex: an existing user notify is never overwritten", () => {
+  assert.throws(() => addCodexNotify('notify = ["say", "hi"]\n', SCRIPT), /already has a `notify`/);
 });

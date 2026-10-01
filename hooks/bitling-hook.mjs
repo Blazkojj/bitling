@@ -1,18 +1,22 @@
 #!/usr/bin/env node
-// Bitling hook for Claude Code (and anything else that can run a command).
+// Bitling hook for Claude Code, Gemini CLI, Codex CLI (and anything else that
+// can run a command).
 //
-//   node bitling-hook.mjs <state>      state: done | waiting | error | working | idle
+//   node bitling-hook.mjs <state> [--source claude-code|gemini|codex]
 //
-// Reads the hook's JSON payload from stdin (if any), then POSTs
-// {"state", "source", "event", "message"} to the Bitling app on
+// state: done | waiting | error | working | idle
+//
+// Reads the agent's JSON payload from stdin (Claude Code, Gemini CLI) or from
+// the last argument (Codex `notify`), then POSTs
+// {"state", "source", "event", "message", "session"} to the Bitling app on
 // http://127.0.0.1:47800/event (override with BITLING_PORT).
 //
 // Golden rule: never get in the agent's way. The script always exits 0,
-// never writes to stdout (Claude Code parses hook stdout), and gives up
-// quickly when Bitling is not running.
+// writes nothing to stdout (Claude Code parses it) except the empty JSON
+// object Gemini CLI expects, and gives up quickly when Bitling is not running.
 //
 // `scripts/install-hooks.mjs` copies this file to ~/.bitling/ and registers
-// it in Claude Code's settings. It has no dependencies on purpose.
+// it with the agent. It has no dependencies on purpose.
 
 import http from "node:http";
 
@@ -24,34 +28,62 @@ const MAX_MESSAGE = 200;
 // Hard stop, whatever happens below.
 setTimeout(() => process.exit(0), TIMEOUT_MS + 500).unref();
 
-const state = process.argv[2];
+const args = process.argv.slice(2);
+let state = args[0];
+const sourceFlag = args.indexOf("--source");
+const source = (sourceFlag >= 0 && args[sourceFlag + 1]) || process.env.BITLING_SOURCE || "claude-code";
+
 if (!STATES.has(state)) {
   process.stderr.write(`bitling-hook: unknown state "${state}" (expected ${[...STATES].join(", ")})\n`);
+  finish();
+}
+
+// Codex passes its payload as the last argument; the others use stdin.
+const last = args[args.length - 1];
+const payload = last?.startsWith("{") ? parseJson(last) : await readStdinJson();
+
+// Gemini reports failed tools through AfterTool, not a separate event.
+if (payload?.hook_event_name === "AfterTool" && payload.tool_response?.error) state = "error";
+
+await post({
+  state,
+  source,
+  event: payload?.hook_event_name ?? payload?.type ?? null,
+  message: describe(payload),
+  session: payload?.session_id ?? payload?.["thread-id"] ?? null,
+});
+finish();
+
+function finish() {
+  if (source === "gemini") process.stdout.write("{}");
   process.exit(0);
 }
 
-const payload = await readStdinJson();
-await post({
-  state,
-  source: process.env.BITLING_SOURCE || "claude-code",
-  event: payload?.hook_event_name ?? null,
-  message: describe(payload),
-});
-process.exit(0);
-
-/** A short human-readable note for the pet, taken from the hook payload. */
+/** A short human-readable note for the pet's speech bubble. */
 function describe(p) {
   if (!p) return null;
   let text = null;
-  switch (p.hook_event_name) {
+  switch (p.hook_event_name ?? p.type) {
     case "Notification":
       text = p.message;
+      break;
+    case "Stop": // Claude Code
+      text = firstLine(p.last_assistant_message);
+      break;
+    case "AfterAgent": // Gemini CLI
+      text = firstLine(p.prompt_response);
+      break;
+    case "agent-turn-complete": // Codex CLI
+      text = firstLine(p["last-assistant-message"]);
       break;
     case "StopFailure":
       text = p.error_message ?? p.error_type;
       break;
     case "PostToolUseFailure":
-      text = [p.tool_name, firstLine(p.tool_error ?? p.error)].filter(Boolean).join(": ");
+      text = [p.tool_name, firstLine(p.error ?? p.tool_error)].filter(Boolean).join(": ");
+      break;
+    case "AfterTool":
+      if (p.tool_response?.error) text = [p.tool_name, firstLine(String(p.tool_response.error))].join(": ");
       break;
   }
   if (typeof text !== "string" || !text.trim()) return null;
@@ -59,8 +91,22 @@ function describe(p) {
   return text.length > MAX_MESSAGE ? `${text.slice(0, MAX_MESSAGE - 1)}…` : text;
 }
 
+/** First non-empty line of a (markdown) text, without leading markup. */
 function firstLine(value) {
-  return typeof value === "string" ? value.split("\n")[0] : null;
+  if (typeof value !== "string") return null;
+  for (const line of value.split("\n")) {
+    const clean = line.trim().replace(/^[#*>`\- ]+/, "").trim();
+    if (clean) return clean;
+  }
+  return null;
+}
+
+function parseJson(text) {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
 }
 
 /** Reads all of stdin as JSON; resolves null for a TTY, empty or invalid input. */
