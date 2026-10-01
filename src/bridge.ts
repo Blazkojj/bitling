@@ -3,8 +3,8 @@
 
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { Menu } from "@tauri-apps/api/menu";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import type { SkinId } from "./skins.ts";
 import type { PetState } from "./sprites.ts";
 
 /** States in the HTTP protocol; each one has its own animation. */
@@ -26,6 +26,16 @@ export interface PetEvent {
   message: string | null;
   progress: Progress;
   levelUp: boolean;
+  /** Agent sessions currently reporting to the pet. */
+  sessions: number;
+  /** State of this very event; `state` is what the pet shows across all sessions. */
+  eventState: AgentState;
+}
+
+export interface Config {
+  skin: SkinId;
+  sound: boolean;
+  bubbles: boolean;
 }
 
 export interface Snapshot {
@@ -34,12 +44,16 @@ export interface Snapshot {
   port: number;
   serverError: string | null;
   demo: boolean;
+  config: Config;
 }
 
-export type MenuEntry =
-  | { text: string; action?: () => void; enabled?: boolean; checked?: boolean }
-  | { submenu: string; items: MenuEntry[] }
-  | "separator";
+/** A rectangle in CSS pixels relative to the window. */
+export interface Rect {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
 
 export const inTauri = isTauri();
 
@@ -51,29 +65,33 @@ export async function onPetEvent(handler: (event: PetEvent) => void): Promise<vo
   if (inTauri) await listen<PetEvent>("bitling:event", (e) => handler(e.payload));
 }
 
+export async function onConfig(handler: (config: Config) => void): Promise<void> {
+  if (inTauri) await listen<Config>("bitling:config", (e) => handler(e.payload));
+}
+
+/** Commands from the native menu: "demo" or "state:<name>". */
+export async function onCommand(handler: (command: string) => void): Promise<void> {
+  if (inTauri) await listen<string>("bitling:command", (e) => handler(e.payload));
+}
+
 export function startDragging(): void {
   if (inTauri) void getCurrentWindow().startDragging();
 }
 
-export function quit(): void {
-  if (inTauri) void invoke("quit");
+/** Native menu (the same one as in the tray). */
+export function showContextMenu(x: number, y: number): void {
+  if (inTauri) void invoke("popup_menu", { x, y });
 }
 
-/** Shows a native context menu at the cursor (no-op in the browser). */
-export async function showContextMenu(entries: MenuEntry[]): Promise<void> {
-  if (!inTauri) return;
-  const menu = await Menu.new({ items: entries.map(toMenuItem) });
-  await menu.popup();
+export function acknowledge(): void {
+  if (inTauri) void invoke("acknowledge");
 }
 
-// The menu API accepts plain option objects and builds native items from them.
-type MenuItemSpec = NonNullable<Parameters<typeof Menu.new>[0]>["items"] extends (infer T)[] | undefined
-  ? T
-  : never;
+export function setConfig(patch: Partial<Config>): void {
+  if (inTauri) void invoke("set_config", { patch });
+}
 
-function toMenuItem(entry: MenuEntry): MenuItemSpec {
-  if (entry === "separator") return { item: "Separator" };
-  if ("submenu" in entry) return { text: entry.submenu, items: entry.items.map(toMenuItem) };
-  const { text, action, enabled = true, checked } = entry;
-  return checked === undefined ? { text, action, enabled } : { text, action, enabled, checked };
+/** Tells the backend which parts of the window should catch the mouse. */
+export function setHitRegions(rects: Rect[]): void {
+  if (inTauri) void invoke("set_hit_regions", { rects });
 }

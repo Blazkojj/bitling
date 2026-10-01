@@ -39,6 +39,8 @@ export interface Hud {
   level: number;
   /** Progress towards the next level, 0..1. */
   progress: number;
+  /** Draw "LV<n>" above the pet (default true). */
+  label?: boolean;
 }
 
 export interface SceneOptions {
@@ -73,7 +75,7 @@ export function composeScene(state: PetState, frameIndex: number, opts: SceneOpt
     // Decorations stay put while the body jumps or shakes.
     stamp(art, STAMPS[fx.stamp], SPRITE_X + fx.x, SPRITE_Y + fx.y, palette);
   }
-  if (opts.hud) drawText(art, `LV${opts.hud.level}`, 1, 0);
+  if (opts.hud && opts.hud.label !== false) drawText(art, `LV${opts.hud.level}`, 1, 0);
 
   // 2. Outline: every transparent pixel touching art (4-neighbourhood) becomes
   //    dark. Done as a separate pass so the art itself never has to include
