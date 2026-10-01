@@ -65,3 +65,10 @@ test("Windows paths use forward slashes", () => {
     'node "C:/Users/me/.bitling/bitling-hook.mjs" waiting',
   );
 });
+
+test("also removes the HTTP hooks added by the app", () => {
+  const settings = {
+    hooks: { Stop: [{ hooks: [{ type: "http", url: "http://127.0.0.1:47800/event?via=bitling" }] }] },
+  };
+  assert.deepEqual(removeBitlingHooks(settings), { settings: {}, removed: 1 });
+});

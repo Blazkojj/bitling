@@ -36,7 +36,12 @@ export function hookCommand(scriptPath, state) {
   return `node "${scriptPath.replaceAll("\\", "/")}" ${state}`;
 }
 
-const isOurs = (hook) => typeof hook?.command === "string" && hook.command.includes(HOOK_MARKER);
+/** Query string the app's own "Connect Claude Code" puts on its HTTP hook URLs. */
+export const URL_MARKER = "via=bitling";
+
+const isOurs = (hook) =>
+  (typeof hook?.command === "string" && hook.command.includes(HOOK_MARKER)) ||
+  (typeof hook?.url === "string" && hook.url.includes(URL_MARKER));
 
 /** Returns a copy of `settings` without Bitling's hooks, and how many were removed. */
 export function removeBitlingHooks(settings) {

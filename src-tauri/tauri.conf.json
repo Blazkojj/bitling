@@ -15,8 +15,8 @@
       {
         "label": "main",
         "title": "Bitling",
-        "width": 128,
-        "height": 144,
+        "width": 240,
+        "height": 224,
         "resizable": false,
         "maximizable": false,
         "transparent": true,

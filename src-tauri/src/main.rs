@@ -1,30 +1,39 @@
 // Prevents an additional console window on Windows in release builds.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod claude_hooks;
+mod config;
+mod menu;
 mod progress;
 mod protocol;
 mod server;
+mod sessions;
+mod window;
 
 use serde::Serialize;
 use serde_json::{json, Value};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex, MutexGuard};
-use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, State, WebviewWindow};
+use std::time::Instant;
+use tauri::tray::TrayIconBuilder;
+use tauri::{AppHandle, Emitter, Manager, State};
 
+use config::{Config, ConfigPatch};
 use progress::{Progress, ProgressStore};
 use protocol::{AgentState, IncomingEvent};
+use sessions::Sessions;
 
-/// Gap between the pet and the screen corner, in logical pixels.
-const CORNER_MARGIN: f64 = 16.0;
-
-/// Pet state shared by the HTTP thread and Tauri commands.
-struct Core {
+/// Pet state shared by the HTTP thread, menus and Tauri commands.
+pub struct Core {
     state: AgentState,
     store: ProgressStore,
+    sessions: Sessions,
+    config: Config,
+    config_path: PathBuf,
 }
 
 #[derive(Clone)]
-struct Shared(Arc<Mutex<Core>>);
+pub struct Shared(Arc<Mutex<Core>>);
 
 impl Shared {
     fn lock(&self) -> MutexGuard<'_, Core> {
@@ -36,7 +45,7 @@ impl Shared {
 }
 
 /// Facts about this run, fixed at startup.
-struct RunInfo {
+pub struct RunInfo {
     port: u16,
     server_error: Option<String>,
     demo: bool,
@@ -51,6 +60,9 @@ struct PetEvent {
     message: Option<String>,
     progress: Progress,
     level_up: bool,
+    sessions: usize,
+    /// The state of this event itself (`state` aggregates all sessions).
+    event_state: AgentState,
 }
 
 #[derive(Serialize)]
@@ -61,6 +73,7 @@ struct Snapshot {
     port: u16,
     server_error: Option<String>,
     demo: bool,
+    config: Config,
 }
 
 /// Bridges HTTP requests to the shared state and the frontend.
@@ -71,30 +84,62 @@ struct AppSink {
 
 impl server::EventSink for AppSink {
     fn on_event(&self, event: IncomingEvent) -> Value {
-        let (progress, level_up) = {
+        let (state, progress, level_up, sessions) = {
             let mut core = self.shared.lock();
-            core.state = event.state;
+            let state = core
+                .sessions
+                .update(event.session.as_deref(), event.state, Instant::now());
+            core.state = state;
             // Demo traffic (scripts/demo.mjs) must not farm XP.
             let level_up = event.source != "demo" && core.store.record(event.state);
-            (core.store.progress(), level_up)
+            (
+                state,
+                core.store.progress(),
+                level_up,
+                core.sessions.active(),
+            )
         };
         let payload = PetEvent {
-            state: event.state,
+            event_state: event.state,
+            state,
             source: event.source,
             message: event.message,
             progress,
             level_up,
+            sessions,
         };
         if let Err(err) = self.app.emit("bitling:event", payload) {
             eprintln!("[bitling] could not reach the pet window: {err}");
         }
-        json!({ "ok": true, "state": event.state, "xp": progress.xp, "level": progress.level, "levelUp": level_up })
+        if level_up {
+            menu::refresh_tray(&self.app);
+        }
+        json!({ "ok": true, "state": state, "xp": progress.xp, "level": progress.level, "levelUp": level_up })
+    }
+
+    fn show(&self) {
+        if let Some(window) = window::main_window(&self.app) {
+            let _ = window.show();
+        }
     }
 
     fn snapshot(&self) -> Value {
         let core = self.shared.lock();
-        json!({ "ok": true, "state": core.state, "progress": core.store.progress() })
+        json!({ "ok": true, "state": core.state, "progress": core.store.progress(), "sessions": core.sessions.active() })
     }
+}
+
+/// Saves a config change and tells the frontend about it.
+pub fn update_config(app: &AppHandle, patch: ConfigPatch) {
+    let config = {
+        let shared = app.state::<Shared>();
+        let mut core = shared.lock();
+        core.config.apply(patch);
+        core.config.save(&core.config_path);
+        core.config.clone()
+    };
+    let _ = app.emit("bitling:config", config);
+    menu::refresh_tray(app);
 }
 
 #[tauri::command]
@@ -106,7 +151,35 @@ fn get_snapshot(shared: State<'_, Shared>, info: State<'_, RunInfo>) -> Snapshot
         port: info.port,
         server_error: info.server_error.clone(),
         demo: info.demo,
+        config: core.config.clone(),
     }
+}
+
+#[tauri::command]
+fn set_config(app: AppHandle, patch: ConfigPatch) {
+    update_config(&app, patch);
+}
+
+/// The user clicked the pet: "seen it". Pending states of all sessions are cleared.
+#[tauri::command]
+fn acknowledge(shared: State<'_, Shared>) {
+    let mut core = shared.lock();
+    core.sessions.clear();
+    core.state = AgentState::Idle;
+}
+
+/// Shows the native menu at the cursor (`x`, `y` in CSS pixels of the window).
+#[tauri::command]
+fn popup_menu(app: AppHandle, window: tauri::Window, x: f64, y: f64) -> Result<(), String> {
+    let menu = menu::build(&app).map_err(|e| e.to_string())?;
+    window
+        .popup_menu_at(&menu, tauri::LogicalPosition::new(x, y))
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn set_hit_regions(regions: State<'_, window::HitRegions>, rects: Vec<window::Rect>) {
+    *regions.0.lock().unwrap_or_else(|e| e.into_inner()) = Some(rects);
 }
 
 #[tauri::command]
@@ -125,40 +198,50 @@ fn data_dir(app: &AppHandle) -> PathBuf {
         .unwrap_or_else(|_| PathBuf::from(".bitling"))
 }
 
-/// Moves the window to the bottom-right corner of the primary screen's work
-/// area (i.e. above the taskbar / dock).
-fn place_in_corner(window: &WebviewWindow) -> tauri::Result<()> {
-    let Some(monitor) = window.primary_monitor()? else {
-        return Ok(());
-    };
-    let area = monitor.work_area();
-    // The window has no decorations, so inner size == outer size. (On Linux,
-    // outer_size() reports 0x0 until the window manager has mapped it.)
-    let size = window.inner_size()?;
-    let margin = (CORNER_MARGIN * monitor.scale_factor()).round() as i32;
-    let x = area.position.x + area.size.width as i32 - size.width as i32 - margin;
-    let y = area.position.y + area.size.height as i32 - size.height as i32 - margin;
-    window.set_position(PhysicalPosition::new(x, y))
-}
-
 fn env_flag(name: &str) -> bool {
     std::env::var(name).is_ok_and(|v| !v.is_empty() && v != "0" && v != "false")
 }
 
 fn main() {
     tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![get_snapshot, quit])
+        // Must come first: a second launch just brings the existing pet back.
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            if let Some(window) = window::main_window(app) {
+                let _ = window.show();
+            }
+        }))
+        .plugin(tauri_plugin_autostart::init(
+            tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+            None,
+        ))
+        .plugin(tauri_plugin_dialog::init())
+        .manage(window::HitRegions::default())
+        .invoke_handler(tauri::generate_handler![
+            get_snapshot,
+            set_config,
+            acknowledge,
+            popup_menu,
+            set_hit_regions,
+            quit
+        ])
+        .on_menu_event(|app, event| menu::handle(app, event.id().as_ref()))
         .setup(|app| {
             // A desk pet should not occupy a Dock slot on macOS.
             #[cfg(target_os = "macos")]
             app.set_activation_policy(tauri::ActivationPolicy::Accessory);
 
             let handle = app.handle().clone();
-            let store = ProgressStore::load(data_dir(&handle).join("state.json"));
-            let shared = Shared(Arc::new(Mutex::new(Core {
+            let dir = data_dir(&handle);
+            let config_path = dir.join("config.json");
+            let core = Core {
                 state: AgentState::Idle,
-                store,
-            })));
+                store: ProgressStore::load(dir.join("state.json")),
+                sessions: Sessions::default(),
+                config: Config::load(&config_path),
+                config_path,
+            };
+            let saved_position = core.config.position;
+            let shared = Shared(Arc::new(Mutex::new(core)));
             app.manage(shared.clone());
 
             let port = std::env::var("BITLING_PORT")
@@ -168,14 +251,19 @@ fn main() {
             let server_error = server::start(
                 port,
                 AppSink {
-                    app: handle,
+                    app: handle.clone(),
                     shared,
                 },
             )
-            .err()
-            .inspect(|err| {
-                eprintln!("[bitling] HTTP endpoint disabled: {err} (is Bitling already running?)")
-            });
+            .err();
+            // Already running? (The single-instance plugin needs D-Bus on Linux;
+            // this also covers systems without it.) Wake that pet and leave.
+            if server_error.is_some() && server::wake_existing(port) {
+                eprintln!("[bitling] already running, showing the existing pet");
+                std::process::exit(0);
+            }
+            let server_error =
+                server_error.inspect(|err| eprintln!("[bitling] HTTP endpoint disabled: {err}"));
             if server_error.is_none() {
                 eprintln!("[bitling] listening on http://127.0.0.1:{port}");
             }
@@ -185,12 +273,18 @@ fn main() {
                 demo: env_flag("BITLING_DEMO") || std::env::args().any(|a| a == "--demo"),
             });
 
-            if let Some(window) = app.get_webview_window("main") {
-                if let Err(err) = place_in_corner(&window) {
-                    eprintln!("[bitling] could not position the window: {err}");
-                }
+            TrayIconBuilder::with_id("main")
+                .icon(app.default_window_icon().cloned().expect("bundled icon"))
+                .tooltip("Bitling")
+                .menu(&menu::build(&handle)?)
+                .build(app)?;
+
+            if let Some(window) = window::main_window(&handle) {
+                window::place(&window, saved_position);
+                window::track_position(&handle, &window);
                 window.show()?;
             }
+            window::start_click_through(&handle);
             Ok(())
         })
         .run(tauri::generate_context!())
