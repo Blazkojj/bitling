@@ -5,10 +5,10 @@ import { invoke, isTauri } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import type { SkinId } from "./skins.ts";
-import type { PetState } from "./sprites.ts";
+import type { OwnMood, PetState } from "./sprites.ts";
 
-/** States in the HTTP protocol ("sleep" is the pet's own idea, agents never send it). */
-export type AgentState = Exclude<PetState, "sleep">;
+/** States in the HTTP protocol (the pet's own moods never come from agents). */
+export type AgentState = Exclude<PetState, OwnMood>;
 
 export interface Progress {
   xp: number;
@@ -32,6 +32,8 @@ export interface PetEvent {
   eventState: AgentState;
   /** Folder the agent works in, e.g. "my-app". */
   project: string | null;
+  /** Titles of achievements this event unlocked. */
+  achievements: string[];
 }
 
 export interface Config {
@@ -48,6 +50,8 @@ export interface Snapshot {
   serverError: string | null;
   demo: boolean;
   config: Config;
+  /** The pet's name. */
+  name: string;
 }
 
 /** A rectangle in CSS pixels relative to the window. */
@@ -84,6 +88,11 @@ export function startDragging(): void {
 /** Native menu (the same one as in the tray). */
 export function showContextMenu(x: number, y: number): void {
   if (inTauri) void invoke("popup_menu", { x, y });
+}
+
+/** Counts a petting; resolves to the titles of achievements it unlocked. */
+export async function recordPet(): Promise<string[]> {
+  return inTauri ? invoke<string[]>("pet") : [];
 }
 
 export function acknowledge(): void {

@@ -8,6 +8,7 @@ import {
   onConfig,
   onPetEvent,
   offerUpdate,
+  recordPet,
   setConfig,
   setHitRegions,
   showContextMenu,
@@ -52,6 +53,16 @@ const SLEEP_AFTER_MS = 10 * 60_000;
 /** ...sooner at night (22:00 to 06:00). */
 const NIGHT_SLEEP_AFTER_MS = 3 * 60_000;
 const UPDATE_CHECK_MS = 24 * 60 * 60_000;
+/** How long a petting session lasts. */
+const LOVE_MS = 2400;
+/** Idle tricks (look around, yawn): checked this often, with this chance. */
+const TRICK_CHECK_MS = 15_000;
+const TRICK_CHANCE = 0.3;
+const TRICKS: ReadonlyArray<[PetState, number]> = [
+  ["look", 2300],
+  ["yawn", 1850],
+];
+const PET_LINES = ["Hehe!", "That tickles!", "♥", "More pets please!", "Purr… wait, I'm not a cat."];
 
 const KEY_STATES: Record<string, PetState> = {
   "1": "idle",
@@ -60,6 +71,7 @@ const KEY_STATES: Record<string, PetState> = {
   "4": "error",
   "5": "working",
   "6": "sleep",
+  "7": "love",
 };
 
 const canvas = document.querySelector<HTMLCanvasElement>("#pet")!;
@@ -77,7 +89,10 @@ let lastActivity = performance.now();
 let frameTimer: ReturnType<typeof setTimeout> | undefined;
 let demoTimer: ReturnType<typeof setTimeout> | undefined;
 let calmTimer: ReturnType<typeof setTimeout> | undefined;
+let moodTimer: ReturnType<typeof setTimeout> | undefined;
 let bubbleTimer: ReturnType<typeof setTimeout> | undefined;
+/** Bubbles waiting for the current one to finish (achievements after a level-up). */
+const bubbleQueue: Array<[string, PetState]> = [];
 
 // ---------------------------------------------------------------------------
 // Rendering
@@ -111,6 +126,7 @@ function toHud(p: Progress): Hud {
 
 function setState(state: PetState): void {
   clearTimeout(calmTimer);
+  clearTimeout(moodTimer);
   if (state !== player.current) {
     player.play(state, performance.now());
     shownSince = performance.now();
@@ -136,6 +152,42 @@ function applyAgentState(state: AgentState): void {
 function touch(): void {
   lastActivity = performance.now();
   if (player.current === "sleep") setState("idle");
+}
+
+/** Plays one of the pet's own short moods, then goes back to idle. */
+function playMood(mood: PetState, ms: number): void {
+  setState(mood);
+  moodTimer = setTimeout(() => {
+    if (player.current === mood) setState("idle");
+  }, ms);
+}
+
+/** Double-click: Bitling loves being petted. */
+function pet(): void {
+  stopDemo();
+  playMood("love", LOVE_MS);
+  if (Math.random() < 0.6) say(PET_LINES[Math.floor(Math.random() * PET_LINES.length)], "done");
+  if (config.sound) play("done");
+  void recordPet().then(announce);
+}
+
+/** Queues one bubble per unlocked achievement. */
+function announce(titles: string[]): void {
+  for (const title of titles) bubbleQueue.push([`🏆 Achievement unlocked: ${title}`, "done"]);
+  if (bubble.hidden) nextBubble();
+}
+
+function nextBubble(): void {
+  const next = bubbleQueue.shift();
+  if (next) say(next[0], next[1]);
+}
+
+/** Now and then an idle pet looks around or yawns, so it never feels frozen. */
+function maybeDoATrick(): void {
+  if (player.current !== "idle" || demoTimer !== undefined || hovering || !bubble.hidden) return;
+  if (Math.random() > TRICK_CHANCE) return;
+  const [trick, ms] = TRICKS[Math.floor(Math.random() * TRICKS.length)];
+  playMood(trick, ms);
 }
 
 /** Dozes off after a long quiet time; agent events and the user wake it up. */
@@ -183,6 +235,8 @@ function hideBubble(): void {
   bubble.hidden = true;
   bubble.className = "";
   updateHitRegions();
+  // Show the next queued bubble after a short pause.
+  if (bubbleQueue.length) setTimeout(() => bubble.hidden && nextBubble(), 400);
 }
 
 async function checkUpdates(): Promise<void> {
@@ -302,6 +356,7 @@ const openMenu = (e: MouseEvent) => {
 canvas.addEventListener("contextmenu", openMenu);
 bubble.addEventListener("contextmenu", openMenu);
 bubble.addEventListener("click", hideBubble);
+canvas.addEventListener("dblclick", pet);
 
 window.addEventListener("keydown", (e) => {
   lastActivity = performance.now();
@@ -342,6 +397,7 @@ async function main(): Promise<void> {
       say(message, kind, kind === "waiting");
       if (kind === "done") flashHud();
     }
+    if (event.achievements.length) announce(event.achievements);
   });
   await onConfig(applyConfig);
   await onCommand((command) => {
@@ -355,6 +411,7 @@ async function main(): Promise<void> {
     applyConfig(snapshot.config);
     setState(snapshot.state);
     if (snapshot.serverError) say(`⚠ ${snapshot.serverError}`, "error");
+    else say(`Hi! I'm ${snapshot.name}. I'll keep an eye on your agents.`, "done");
   }
 
   // Browser preview helpers: ?demo, ?state=done, ?hud, ?skin=gameboy, ?level=12, ?say=Hello
@@ -373,6 +430,7 @@ async function main(): Promise<void> {
   render();
 
   setInterval(maybeFallAsleep, 20_000);
+  setInterval(maybeDoATrick, TRICK_CHECK_MS);
   void checkUpdates();
   setInterval(() => void checkUpdates(), UPDATE_CHECK_MS);
 }

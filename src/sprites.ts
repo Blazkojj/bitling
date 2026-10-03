@@ -11,10 +11,21 @@
 //   A  antenna tip        L  legs            P  pink (cheeks, tongue)
 //   R  alert red          W  white           g/G leaf green (accessories)
 
-/** `sleep` is the pet's own mood (long idle); agents never send it. */
-export type PetState = "idle" | "working" | "done" | "waiting" | "error" | "sleep";
+/** Moods the pet has on its own (agents never send them). */
+export type OwnMood = "sleep" | "love" | "look" | "yawn";
+export type PetState = "idle" | "working" | "done" | "waiting" | "error" | OwnMood;
 
-export const PET_STATES: readonly PetState[] = ["idle", "working", "done", "waiting", "error", "sleep"];
+export const PET_STATES: readonly PetState[] = [
+  "idle",
+  "working",
+  "done",
+  "waiting",
+  "error",
+  "sleep",
+  "love",
+  "look",
+  "yawn",
+];
 
 export const SPRITE_W = 10;
 export const SPRITE_H = 9;
@@ -26,7 +37,17 @@ export type Grid = readonly string[];
 export type Palette = Readonly<Record<string, string>>;
 
 /** Small decorations drawn around the creature (sparkles, "!", sweat drop). */
-export type StampName = "sparkle" | "twinkle" | "bang" | "drop" | "dot1" | "dot2" | "dot3" | "z" | "Z";
+export type StampName =
+  | "sparkle"
+  | "twinkle"
+  | "bang"
+  | "drop"
+  | "dot1"
+  | "dot2"
+  | "dot3"
+  | "z"
+  | "Z"
+  | "heart";
 
 /** Stamps drawn after the outline pass: thin glyphs that an outline would fill in. */
 export const FLOATING_STAMPS: ReadonlySet<StampName> = new Set(["z", "Z"]);
@@ -114,6 +135,7 @@ export const STAMPS: Readonly<Record<StampName, Grid>> = {
   dot1: ["w...."],
   dot2: ["w.w.."],
   dot3: ["w.w.w"],
+  heart: ["P.P", "PPP", ".P."],
   // Zzz while sleeping (drawn without an outline, see FLOATING_STAMPS)
   z: ["bbb", ".b.", "b..", "bbb"],
   Z: ["bbb", "..b", ".b.", "b..", "bbb"],
@@ -189,6 +211,60 @@ const SLEEP_OUT: Grid = [
   ".BEEBBEED.",
   ".BBBBBBBD.",
   "..DDDDDD..",
+  "..L....L..",
+];
+
+// ---------------------------------------------------------------------------
+// love: being petted (double-click): happy eyes, blush, little hops, hearts
+
+const LOVE: Grid = [
+  "......A...",
+  ".....E....",
+  "..HHBBBB..",
+  ".BHBBBBBB.",
+  ".BBEBBEBD.",
+  ".BEBBBBED.",
+  ".BPBEEBPD.",
+  "..DDPPDD..",
+  "..L....L..",
+];
+
+// ---------------------------------------------------------------------------
+// idle tricks: looking around, yawning
+
+const LOOK_LEFT: Grid = [
+  ".....A....",
+  ".....E....",
+  "..HHBBBB..",
+  ".BEBBEBBB.",
+  ".BEBBEBBD.",
+  ".BBBBBBBD.",
+  ".BBEEBBBD.",
+  "..DDDDDD..",
+  "..L....L..",
+];
+
+const LOOK_RIGHT: Grid = [
+  ".......A..",
+  "......E...",
+  "..HHBBBB..",
+  ".BHBEBBEB.",
+  ".BBBEBBED.",
+  ".BBBBBBBD.",
+  ".BBBBEEBD.",
+  "..DDDDDD..",
+  "..L....L..",
+];
+
+const YAWN: Grid = [
+  "......A...",
+  ".....E....",
+  "..HHBBBB..",
+  ".BHBBBBBB.",
+  ".BBEBBEBD.",
+  ".BBBEEBBD.",
+  ".BBEPPEBD.",
+  "..DDEEDD..",
   "..L....L..",
 ];
 
@@ -321,7 +397,44 @@ const ERROR_WOBBLE: Grid = [
 
 // ---------------------------------------------------------------------------
 
+const IDLE_PALETTE = palette("#29adff", "#1a75c9", "#a8e4ff", "#ff77a8");
+
 export const ANIMATIONS: Readonly<Record<PetState, Animation>> = {
+  love: {
+    palette: IDLE_PALETTE,
+    frames: [
+      // Hearts float up from both sides of the head.
+      { sprite: LOVE, dy: -1, fx: [{ stamp: "heart", x: -2, y: -1 }] },
+      { sprite: LOVE, fx: [{ stamp: "heart", x: -2, y: -3 }, { stamp: "heart", x: 9, y: -1 }] },
+      { sprite: LOVE, dy: -1, fx: [{ stamp: "heart", x: -1, y: -5 }, { stamp: "heart", x: 9, y: -3 }] },
+      { sprite: LOVE, fx: [{ stamp: "heart", x: 9, y: -5 }] },
+    ],
+    steps: [
+      { frame: 0, ms: 300 },
+      { frame: 1, ms: 300 },
+      { frame: 2, ms: 300 },
+      { frame: 3, ms: 300 },
+    ],
+  },
+  look: {
+    palette: IDLE_PALETTE,
+    frames: [{ sprite: LOOK_LEFT }, { sprite: IDLE_OPEN }, { sprite: LOOK_RIGHT }],
+    steps: [
+      { frame: 0, ms: 900 },
+      { frame: 1, ms: 250 },
+      { frame: 2, ms: 900 },
+      { frame: 1, ms: 250 },
+    ],
+  },
+  yawn: {
+    palette: IDLE_PALETTE,
+    frames: [{ sprite: IDLE_BLINK }, { sprite: YAWN, dy: -1 }],
+    steps: [
+      { frame: 0, ms: 250 },
+      { frame: 1, ms: 1300 },
+      { frame: 0, ms: 300 },
+    ],
+  },
   sleep: {
     palette: palette("#29adff", "#1a75c9", "#a8e4ff", "#ff77a8"),
     frames: [
