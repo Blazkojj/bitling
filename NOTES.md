@@ -3,22 +3,32 @@
 Working notes for contributors. The README is the user-facing doc; this file records *why*
 things are the way they are, what has been verified, and what to do next.
 
-## Status (v0.2.0, 2026-10-01)
+## Status (v0.2.0, 2026-10-03)
 
-The whole original roadmap is implemented:
-
-- 5 animated states (idle, working, waiting, done, error), speech bubbles, optional sounds.
-- XP and levels, evolutions (sprout at 5, crown at 10), confetti on level-up, 4 skins.
+- 5 agent states (idle, working, waiting, done, error) plus the pet's own moods (asleep, petted,
+  looking around, yawning), speech bubbles, optional sounds, 3 sizes, 4 skins.
+- XP and levels, evolutions (sprout at 5, crown at 10), confetti on level-up, 16 achievements,
+  daily streaks, stats, a random name per pet.
 - Claude Code: one-click "Connect" from the app (HTTP hooks, no Node) or `npm run hooks:install`.
-- Gemini CLI and Codex CLI adapters (`--agent gemini|codex`).
-- Multiple agent sessions, tray icon, native menu, remembered position, launch at login,
-  single instance, click-through outside the pet.
-- CI and a tag-triggered release workflow producing installers for all three platforms.
+- Adapters for Gemini CLI, Codex CLI, Cursor, Aider, OpenCode (`--agent ...`).
+- Multiple agent sessions with project names, tray icon, native menu, remembered position,
+  launch at login, single instance, click-through outside the pet, daily update check.
+- CI on every push; a release workflow (tag → draft release, manual run → artifacts only);
+  a Pages workflow for the browser playground (`playground.html`).
 - `docs/demo.gif` is a real recording (Claude Code `-p` run, see "Recording the demo").
 
-### Verified (Linux, Xvfb)
+### Verified
 
-- `npm test`: 10 JS tests + 21 Rust tests; `cargo clippy -D warnings`, `cargo fmt --check`.
+- GitHub Actions: CI green; the release workflow built installers on macOS (Apple Silicon and
+  Intel), Windows and Linux (manual run, artifacts only). The Pages build step works; deploying
+  needs Pages enabled (Settings → Pages → Source: GitHub Actions).
+
+On Linux under Xvfb:
+
+- `npm test`: 13 JS tests + 26 Rust tests; `cargo clippy -D warnings`, `cargo fmt --check`.
+- Petting, achievement bubbles (queued after other bubbles), the stats menu, sizes, the greeting
+  with the pet's name; the playground page in headless Chromium (desktop and phone width).
+- Simulated Cursor, Aider and OpenCode events through the hook script / plugin.
 - Real Claude Code 2.1.287 end-to-end, both with the Node script hooks and with the app's HTTP
   hooks: UserPromptSubmit/PostToolUse → working, PostToolUseFailure → error with the traceback in
   the bubble, Stop → done with the first line of Claude's answer, +10 XP, level-up.
@@ -28,10 +38,10 @@ The whole original roadmap is implemented:
 
 ### Not verified yet
 
-- macOS and Windows builds (the release workflow has never run: push a `v0.2.0` tag).
+- Running the macOS and Windows builds (they compile and bundle in CI; nobody has launched them).
 - Tray icon display (the container has no D-Bus / tray host), autostart, the D-Bus based
   single-instance plugin, click-through with a real window manager / Wayland.
-- Real Gemini CLI and Codex CLI sessions (only their documented payloads were tested).
+- Real Gemini CLI, Codex CLI, Cursor, Aider and OpenCode sessions (documented payloads only).
 - Sounds (no audio device in the container).
 - The `Notification`/`permission_prompt` hook from a live interactive session.
 
@@ -51,6 +61,9 @@ src/animation.ts              steps through frames in real time
 src/renderer.ts               paints a scene on the canvas (DPR-aware)
 src/sound.ts                  WebAudio jingles
 src/updates.ts                daily GitHub "latest release" check
+src/playground.ts             browser playground (playground.html) driving the pet via window.bitling
+src/pet.css / window.css      pet + bubble styles / the transparent app window
+src-tauri/src/achievements.rs achievement rules (pure, tested)
 src/bridge.ts                 all Tauri calls; no-ops in a plain browser
 src/main.ts                   wiring: input, bubbles, demo, agent events, hit regions
 src-tauri/src/main.rs         setup, plugins, commands, shared state
@@ -118,6 +131,14 @@ Data flow: hook → `POST /event` → `AppSink::on_event` (sessions, XP, save) �
     `https://api.github.com` only), the backend accepts the URL only if it starts with this
     repository's releases page, and the menu opens it in the browser. Real auto-update would need
     the Tauri updater plus a signing key stored as a GitHub secret.
+21. **Achievements** are pure rules over counters (`achievements.rs`); time-based ones use the
+    local hour/weekday of the event (chrono). Streaks count local calendar days with a done event.
+    Unlocks are announced through a bubble queue so they don't overwrite each other.
+22. **Sizes** scale the canvas (6/8/11 px per big pixel); the Rust side resizes the window keeping
+    the bottom-right corner fixed and computes window sizes instead of reading them back.
+23. **Playground** reuses `main.ts` as-is in the browser; `window.bitling` only exists outside
+    Tauri. The page is built separately (`vite.site.config.ts`, relative base) so the app bundle
+    stays unchanged.
 
 ## Known issues / edge cases
 
@@ -129,12 +150,15 @@ Data flow: hook → `POST /event` → `AppSink::on_event` (sessions, XP, save) �
 
 ## Next steps
 
-1. Push a `v0.2.0` tag, check the release workflow on all platforms, publish the draft release.
-2. Test on macOS and Windows (transparency, click-through, tray, autostart, PowerShell hooks).
-3. Signing/notarization and the Tauri updater.
-4. More agents: Cursor hooks, Aider, OpenCode; a VS Code extension that posts to the API.
-5. More moods: sleepy at night, bored after long idle, happy streaks.
-6. Per-project pets (one Bitling per repository / session).
+1. Publish the draft release created by the `v0.2.0` tag (check the installers first).
+2. Enable GitHub Pages (Settings → Pages → Source: GitHub Actions) and run the "Playground"
+   workflow, so the README's "Try it in your browser" link works.
+3. Launch the macOS and Windows builds by hand: transparency, click-through, tray, autostart,
+   hooks under PowerShell.
+4. Signing/notarization and the Tauri updater (needs certificates and a signing key secret).
+5. Editor extensions (VS Code, JetBrains) posting to the HTTP API.
+6. Localized bubbles and menu, more moods/evolutions, a community skins gallery.
+7. Per-project pets (one Bitling per repository / session), side by side.
 
 ## Recording the demo
 

@@ -18,7 +18,7 @@ terminal.
 
 Works with **Claude Code**, **Gemini CLI**, **Codex CLI**, **Cursor**, **Aider** and **OpenCode**.
 
-[Download](https://github.com/Blazkojj/bitling/releases) · [Quick start](#quick-start) · [How it works](#how-it-works) · [Make it yours](#make-it-yours)
+**[▶ Try it in your browser](https://blazkojj.github.io/bitling/)** · [Download](https://github.com/Blazkojj/bitling/releases) · [Quick start](#quick-start) · [How it works](#how-it-works) · [Make it yours](#make-it-yours)
 
 </div>
 
@@ -45,14 +45,17 @@ something you notice from the corner of your eye, without notifications nagging 
 
 A speech bubble tells you *what* happened ("Bash wants to run `npm test`", "Fixed the login bug").
 Every finished task earns XP; your Bitling levels up, grows a sprout at level 5 and a crown at
-level 10.
+level 10, and collects achievements (night owl, 7-day streak, polyglot...). It has a name, it
+loves being petted (double-click it), and when nothing happens it looks around, yawns, and
+eventually naps.
 
 ## Features
 
 - 🪟 Tiny transparent window, always on top, drag it anywhere, clicks pass through around it
 - 💬 Speech bubbles with the agent's message, 🎵 optional chiptune sounds
 - 🎨 Hand-made 10×9 pixel art drawn in code, 4 skins (Classic, Pastel, Midnight, Game Boy)
-- ⭐ XP, levels, evolutions and a confetti party on level-up
+- ⭐ XP, levels, evolutions, a confetti party on level-up, 16 achievements and daily streaks
+- 🥰 A name of its own, petting (double-click), idle tricks, naps; small / normal / large size
 - 🔌 Works with **Claude Code** (one click, no Node.js needed), **Gemini CLI**, **Codex CLI**,
   **Cursor**, **Aider** and **OpenCode**
 - 👥 Several agents at once: one waiting for you always wins, bubbles say which project it is
@@ -101,9 +104,10 @@ npm run hooks:install -- --agent opencode  # OpenCode
 | --- | --- |
 | **Drag** | Move the pet (it remembers where) |
 | **Click** | "Seen it": calm the pet down, dismiss the bubble |
+| **Double-click** | Pet it ♥ |
 | **Hover** | Show level and XP bar |
-| **Right-click** / tray icon | Demo, states, skins, sounds, bubbles, launch at login, updates, connect/disconnect Claude Code, quit |
-| Keys **1–6**, **D**, **S**, **L** | Idle / done / waiting / error / working / asleep, demo, next skin, level-up party (when focused) |
+| **Right-click** / tray icon | Stats and achievements, demo, states, skins, size, sounds, bubbles, launch at login, updates, connect/disconnect Claude Code, quit |
+| Keys **1–7**, **D**, **S**, **L** | Idle / done / waiting / error / working / asleep / petted, demo, next skin, level-up party (when focused) |
 
 ## How it works
 
@@ -185,8 +189,9 @@ are the best kind of PR.
 
 ## Settings and files
 
-Everything lives in `~/.bitling/`: `state.json` (XP, stats), `config.json` (skin, sound, bubbles,
-position) and the hook script.
+Everything lives in `~/.bitling/`: `state.json` (name, XP, stats, streaks, achievements),
+`config.json` (skin, size, sound, bubbles, updates, position) and the hook script. Rename your pet
+by editing `name` in `state.json`.
 
 | Environment variable | Default | |
 | --- | --- | --- |
@@ -202,9 +207,10 @@ position) and the hook script.
 - [x] XP, levels, evolutions, level-up party, skins, a sleepy mood
 - [x] Multiple sessions with project names, tray, remembered position, launch at login, single instance
 - [x] Prebuilt installers via GitHub Actions, update notifications
+- [x] Achievements, streaks, petting, idle tricks, sizes, a browser playground
 - [ ] Signed and notarized builds with one-click auto-update (needs signing certificates)
 - [ ] Editor extensions (VS Code, JetBrains) that talk to the HTTP API
-- [ ] More moods and evolutions, community skins gallery
+- [ ] More moods and evolutions, community skins gallery, localized bubbles
 - [ ] Bitling friends: one pet per project, side by side
 
 ## Troubleshooting
