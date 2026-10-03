@@ -1,0 +1,33 @@
+name: Bug report
+description: Bitling misbehaves or doesn't react to your agent
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What did you expect, and what did the pet do instead?
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options: [Windows, macOS, Linux (X11), Linux (Wayland), Other]
+    validations:
+      required: true
+  - type: dropdown
+    id: agent
+    attributes:
+      label: Agent
+      options: [Claude Code, Gemini CLI, Codex CLI, Cursor, Aider, OpenCode, HTTP API / other]
+  - type: input
+    id: version
+    attributes:
+      label: Bitling version
+      placeholder: "0.2.0 (right-click the pet: shown in the menu)"
+  - type: textarea
+    id: details
+    attributes:
+      label: Anything else?
+      description: Steps to reproduce, screenshots, the output of `curl http://127.0.0.1:47800/health`.

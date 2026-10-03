@@ -1,0 +1,18 @@
+name: Idea, skin or agent adapter
+description: Suggest a new mood, skin, evolution, achievement or agent integration
+labels: [idea]
+body:
+  - type: dropdown
+    id: kind
+    attributes:
+      label: What kind of idea?
+      options: [New skin, New mood or animation, Evolution / achievement, Agent adapter, Something else]
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: Tell us about it
+      description: Pixel art sketches (ASCII is perfect, see src/sprites.ts) and links to agent docs are very welcome.
+    validations:
+      required: true
