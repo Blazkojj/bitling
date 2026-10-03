@@ -12,9 +12,9 @@ It thinks while Claude works, waves a big **!** when it needs your approval, swe
 breaks, throws confetti when the job is done, and naps when you're away. Stop babysitting the
 terminal.
 
-<img src="docs/states.gif" alt="Bitling's moods: idle, working, waiting for you, done, error, asleep" width="660">
+<img src="docs/states.gif" alt="Bitling's moods: idle, working, waiting for you, done, error, asleep, petted" width="770">
 
-`idle` · `working` · `waiting for you` · `done` · `error` · `asleep`
+`idle` · `working` · `waiting for you` · `done` · `error` · `asleep` · `petted`
 
 Works with **Claude Code**, **Gemini CLI**, **Codex CLI**, **Cursor**, **Aider** and **OpenCode**.
 
