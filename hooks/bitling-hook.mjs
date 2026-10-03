@@ -1,8 +1,8 @@
 #!/usr/bin/env node
-// Bitling hook for Claude Code, Gemini CLI, Codex CLI (and anything else that
-// can run a command).
+// Bitling hook for Claude Code, Gemini CLI, Codex CLI, Cursor, Aider (and
+// anything else that can run a command).
 //
-//   node bitling-hook.mjs <state> [--source claude-code|gemini|codex]
+//   node bitling-hook.mjs <state> [--source claude-code|gemini|codex|cursor|aider]
 //
 // state: done | waiting | error | working | idle
 //
@@ -12,8 +12,8 @@
 // http://127.0.0.1:47800/event (override with BITLING_PORT).
 //
 // Golden rule: never get in the agent's way. The script always exits 0,
-// writes nothing to stdout (Claude Code parses it) except the empty JSON
-// object Gemini CLI expects, and gives up quickly when Bitling is not running.
+// writes nothing to stdout (Claude Code parses it) except the JSON Gemini CLI
+// and Cursor expect, and gives up quickly when Bitling is not running.
 //
 // `scripts/install-hooks.mjs` copies this file to ~/.bitling/ and registers
 // it with the agent. It has no dependencies on purpose.
@@ -30,6 +30,7 @@ setTimeout(() => process.exit(0), TIMEOUT_MS + 500).unref();
 
 const args = process.argv.slice(2);
 let state = args[0];
+let payload = null;
 const sourceFlag = args.indexOf("--source");
 const source = (sourceFlag >= 0 && args[sourceFlag + 1]) || process.env.BITLING_SOURCE || "claude-code";
 
@@ -40,10 +41,13 @@ if (!STATES.has(state)) {
 
 // Codex passes its payload as the last argument; the others use stdin.
 const last = args[args.length - 1];
-const payload = last?.startsWith("{") ? parseJson(last) : await readStdinJson();
+payload = last?.startsWith("{") ? parseJson(last) : await readStdinJson();
 
 // Gemini reports failed tools through AfterTool, not a separate event.
 if (payload?.hook_event_name === "AfterTool" && payload.tool_response?.error) state = "error";
+// Cursor's stop hook carries how the turn ended.
+if (payload?.hook_event_name === "stop" && payload.status === "error") state = "error";
+if (payload?.hook_event_name === "stop" && payload.status === "aborted") state = "idle";
 
 await post({
   state,
@@ -56,6 +60,10 @@ finish();
 
 function finish() {
   if (source === "gemini") process.stdout.write("{}");
+  // Cursor reads a decision from beforeSubmitPrompt: always let the prompt through.
+  if (source === "cursor") {
+    process.stdout.write(payload?.hook_event_name === "beforeSubmitPrompt" ? '{"continue":true}' : "{}");
+  }
   process.exit(0);
 }
 

@@ -1,7 +1,10 @@
-// Pure helpers that add/remove Bitling's hooks in an agent's settings: Claude
-// Code and Gemini CLI share the same JSON hooks layout; Codex uses one TOML
-// `notify` line. No file system access here, so they are easy to test
-// (claude-settings.test.mjs).
+// Pure helpers that add/remove Bitling's hooks in each agent's config:
+//   Claude Code, Gemini CLI  settings.json with the same hooks layout
+//   Cursor                   ~/.cursor/hooks.json
+//   Codex CLI                one `notify` line in config.toml
+//   Aider                    `notifications_command` in .aider.conf.yml
+// (OpenCode needs no config: a plugin file is copied, see install-hooks.mjs.)
+// No file system access here, so everything is easy to test (agents.test.mjs).
 
 /** Every hook command Bitling installs contains this, which is how we find ours again. */
 export const HOOK_MARKER = "bitling-hook.mjs";
@@ -142,4 +145,68 @@ export function removeCodexNotify(toml) {
   const removed = lines.length - kept.length;
   const text = kept.join("\n");
   return { toml: removed ? text.replace(/^\n+/, "") : text, removed };
+}
+
+// ---------------------------------------------------------------------------
+// Cursor: ~/.cursor/hooks.json, `{ "version": 1, "hooks": { "<event>": [{ "command" }] } }`.
+// Cursor has no "waiting for approval" event; stop carries status completed/aborted/error.
+
+export const CURSOR_HOOK_EVENTS = [
+  { event: "beforeSubmitPrompt", state: "working", why: "you sent a prompt" },
+  { event: "afterFileEdit", state: "working", why: "the agent edited a file" },
+  { event: "afterShellExecution", state: "working", why: "a command finished" },
+  { event: "stop", state: "done", why: "the agent finished (error/aborted too)" },
+];
+
+export function removeCursorHooks(config) {
+  const result = structuredClone(config ?? {});
+  let removed = 0;
+  for (const [event, list] of Object.entries(result.hooks ?? {})) {
+    if (!Array.isArray(list)) continue;
+    const kept = list.filter((hook) => !isOurs(hook));
+    removed += list.length - kept.length;
+    if (kept.length) result.hooks[event] = kept;
+    else delete result.hooks[event];
+  }
+  if (result.hooks && Object.keys(result.hooks).length === 0) delete result.hooks;
+  return { config: result, removed };
+}
+
+export function addCursorHooks(config, scriptPath) {
+  const { config: result } = removeCursorHooks(config);
+  result.version ??= 1;
+  result.hooks ??= {};
+  for (const { event, state } of CURSOR_HOOK_EVENTS) {
+    result.hooks[event] = [...(result.hooks[event] ?? []), { command: hookCommand(scriptPath, state, "cursor") }];
+  }
+  return result;
+}
+
+// ---------------------------------------------------------------------------
+// Aider: runs `notifications_command` through the shell whenever it finishes
+// and waits for input. Our lines end with a `# bitling` comment.
+
+const AIDER_MARK = "# bitling";
+const yamlKey = (key) => new RegExp(`^\\s*${key}\\s*:`);
+
+export function removeAiderNotify(yaml) {
+  const lines = (yaml ?? "").split("\n");
+  const kept = lines.filter((line) => !line.trimEnd().endsWith(AIDER_MARK));
+  return { yaml: kept.join("\n"), removed: lines.length - kept.length };
+}
+
+export function addAiderNotify(yaml, scriptPath) {
+  const base = removeAiderNotify(yaml).yaml.replace(/\n+$/, "");
+  const lines = base ? base.split("\n") : [];
+  if (lines.some((line) => yamlKey("notifications_command").test(line))) {
+    throw new Error(".aider.conf.yml already has a notifications_command; Aider supports only one.");
+  }
+  const notifications = lines.find((line) => yamlKey("notifications").test(line));
+  if (notifications && !/:\s*true\b/.test(notifications)) {
+    throw new Error(".aider.conf.yml turns notifications off; set `notifications: true` or remove it first.");
+  }
+  const command = hookCommand(scriptPath, "done", "aider");
+  if (!notifications) lines.push(`notifications: true ${AIDER_MARK}`);
+  lines.push(`notifications_command: '${command}' ${AIDER_MARK}`);
+  return `${lines.join("\n")}\n`;
 }

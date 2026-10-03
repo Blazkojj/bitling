@@ -4,6 +4,9 @@
 //   npm run hooks:install                 Claude Code (~/.claude/settings.json)
 //   npm run hooks:install -- --agent gemini   Gemini CLI (~/.gemini/settings.json)
 //   npm run hooks:install -- --agent codex    Codex CLI (~/.codex/config.toml)
+//   npm run hooks:install -- --agent cursor   Cursor (~/.cursor/hooks.json)
+//   npm run hooks:install -- --agent aider    Aider (~/.aider.conf.yml)
+//   npm run hooks:install -- --agent opencode OpenCode (plugin in ~/.config/opencode/plugins)
 //   npm run hooks:uninstall [-- --agent ...]  remove them again
 //   ... -- --yes                          don't ask for confirmation
 //   ... -- --dry-run                      only print the resulting settings
@@ -19,14 +22,19 @@ import path from "node:path";
 import readline from "node:readline/promises";
 import { fileURLToPath } from "node:url";
 import {
+  addAiderNotify,
   addBitlingHooks,
   addCodexNotify,
+  addCursorHooks,
   countBitlingHooks,
+  CURSOR_HOOK_EVENTS,
   GEMINI_HOOK_EVENTS,
   HOOK_EVENTS,
+  removeAiderNotify,
   removeBitlingHooks,
   removeCodexNotify,
-} from "./lib/claude-settings.mjs";
+  removeCursorHooks,
+} from "./lib/agents.mjs";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const args = process.argv.slice(2);
@@ -37,7 +45,7 @@ const option = (name) => {
 };
 
 if (flag("--help") || flag("-h")) {
-  console.log(fs.readFileSync(fileURLToPath(import.meta.url), "utf8").split("\n").slice(1, 14).join("\n"));
+  console.log(fs.readFileSync(fileURLToPath(import.meta.url), "utf8").split("\n").slice(1, 17).join("\n"));
   process.exit(0);
 }
 
@@ -51,6 +59,10 @@ const AGENTS = {
   claude: { name: "Claude Code", file: path.join(process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), ".claude"), "settings.json"), restart: "Restart Claude Code (or open /hooks) so it picks up the new hooks." },
   gemini: { name: "Gemini CLI", file: path.join(os.homedir(), ".gemini", "settings.json"), restart: "Restart Gemini CLI so it picks up the new hooks." },
   codex: { name: "Codex CLI", file: path.join(process.env.CODEX_HOME || path.join(os.homedir(), ".codex"), "config.toml"), restart: "Codex reads config.toml at startup: start a new session." },
+  cursor: { name: "Cursor", file: path.join(os.homedir(), ".cursor", "hooks.json"), restart: "Restart Cursor so it picks up the new hooks." },
+  aider: { name: "Aider", file: path.join(os.homedir(), ".aider.conf.yml"), restart: "Start a new Aider session." },
+  // OpenCode loads every plugin file from its config folder; ours is the "settings file".
+  opencode: { name: "OpenCode", file: path.join(process.env.XDG_CONFIG_HOME || path.join(os.homedir(), ".config"), "opencode", "plugins", "bitling.js"), restart: "Restart OpenCode so it loads the plugin." },
 };
 if (!AGENTS[agent]) {
   console.error(`Unknown --agent "${agent}". Use one of: ${Object.keys(AGENTS).join(", ")}`);
@@ -74,8 +86,31 @@ main().catch((err) => {
 
 /** What will be written, computed up front so it can be shown before asking. */
 function plan() {
+  const readText = () => (fs.existsSync(settingsPath) ? fs.readFileSync(settingsPath, "utf8") : "");
+  if (agent === "opencode") {
+    // `text: null` means "delete the plugin file".
+    const text = uninstall ? null : fs.readFileSync(path.join(repoRoot, "hooks", "opencode-bitling.js"), "utf8");
+    const events = [
+      { event: "session.status (busy)", state: "working", why: "OpenCode is working" },
+      { event: "permission.asked", state: "waiting", why: "OpenCode needs your approval" },
+      { event: "session.error", state: "error", why: "something failed" },
+      { event: "session.idle", state: "done", why: "OpenCode finished" },
+    ];
+    return { existing: fs.existsSync(settingsPath) ? 1 : 0, text, events };
+  }
+  if (agent === "aider") {
+    const current = readText();
+    const text = uninstall ? removeAiderNotify(current).yaml : addAiderNotify(current, hookTarget);
+    const events = [{ event: "notifications_command", state: "done", why: "Aider finished and waits for you" }];
+    return { existing: removeAiderNotify(current).removed, text, events };
+  }
+  if (agent === "cursor") {
+    const current = readSettings(settingsPath);
+    const next = uninstall ? removeCursorHooks(current).config : addCursorHooks(current, hookTarget);
+    return { existing: removeCursorHooks(current).removed, text: `${JSON.stringify(next, null, 2)}\n`, events: CURSOR_HOOK_EVENTS };
+  }
   if (agent === "codex") {
-    const current = fs.existsSync(settingsPath) ? fs.readFileSync(settingsPath, "utf8") : "";
+    const current = readText();
     const existing = removeCodexNotify(current).removed;
     const text = uninstall ? removeCodexNotify(current).toml : addCodexNotify(current, hookTarget);
     const events = [{ event: "notify (after every turn)", state: "done", why: "Codex finished its turn" }];
@@ -92,7 +127,7 @@ async function main() {
 
   console.log(c.bold(uninstall ? `\nRemove Bitling from ${agentName}\n` : `\nConnect Bitling to ${agentName}\n`));
   console.log(`  Settings file  ${settingsPath}${fs.existsSync(settingsPath) ? "" : c.dim(" (will be created)")}`);
-  if (!uninstall) console.log(`  Hook script    ${hookTarget}`);
+  if (!uninstall && agent !== "opencode") console.log(`  Hook script    ${hookTarget}`);
   console.log();
 
   if (uninstall) {
@@ -113,11 +148,12 @@ async function main() {
 
   if (dryRun) {
     console.log(c.bold(`\n  --dry-run: resulting ${path.basename(settingsPath)}\n`));
-    console.log(text);
+    console.log(text ?? "(the plugin file is deleted)");
     return;
   }
 
-  const backup = fs.existsSync(settingsPath) ? backupPath(settingsPath) : null;
+  // The OpenCode plugin file is entirely ours: no backup needed.
+  const backup = fs.existsSync(settingsPath) && agent !== "opencode" ? backupPath(settingsPath) : null;
   if (backup) console.log(`\n  A backup will be saved to ${backup}`);
 
   if (!(await confirm("\n  Continue? [y/N] "))) {
@@ -126,12 +162,16 @@ async function main() {
   }
 
   if (backup) fs.copyFileSync(settingsPath, backup);
-  if (!uninstall) {
+  if (!uninstall && agent !== "opencode") {
     fs.mkdirSync(bitlingDir, { recursive: true });
     fs.copyFileSync(hookSource, hookTarget);
   }
-  fs.mkdirSync(path.dirname(settingsPath), { recursive: true });
-  fs.writeFileSync(settingsPath, text);
+  if (text === null) {
+    fs.rmSync(settingsPath, { force: true });
+  } else {
+    fs.mkdirSync(path.dirname(settingsPath), { recursive: true });
+    fs.writeFileSync(settingsPath, text);
+  }
 
   console.log(c.green(`\n  ✔ ${uninstall ? "Bitling hooks removed." : "Bitling hooks installed."}`));
   if (uninstall) {

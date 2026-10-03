@@ -40,7 +40,7 @@ The whole original roadmap is implemented:
 ```
 hooks/bitling-hook.mjs        hook script for Claude/Gemini/Codex (copied to ~/.bitling/)
 scripts/install-hooks.mjs     CLI installer (--agent claude|gemini|codex)
-scripts/lib/claude-settings   pure merge logic for all agents + node:test tests
+scripts/lib/agents.mjs        pure config merge logic for all agents + node:test tests
 scripts/demo.mjs              drives a running app over HTTP
 scripts/render-sprites.mjs    PNG/GIF/icon export from the sprite data
 src/sprites.ts                ASCII pixel art, palettes, frames, accessories (pure data)

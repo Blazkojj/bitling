@@ -1,7 +1,7 @@
 //! "Connect Claude Code" from the app itself: adds `type: "http"` hooks that
 //! post straight to Bitling, so binary users don't need Node.js.
 //!
-//! Mirrors scripts/lib/claude-settings.mjs (the Node installer); both can
+//! Mirrors scripts/lib/agents.mjs (the Node installer); both can
 //! remove each other's hooks.
 
 use serde_json::{json, Map, Value};
@@ -14,7 +14,7 @@ const URL_MARKER: &str = "via=bitling";
 /// Marker of the Node hook script installed by scripts/install-hooks.mjs.
 const SCRIPT_MARKER: &str = "bitling-hook.mjs";
 
-/// (event, matcher). Keep in sync with HOOK_EVENTS in scripts/lib/claude-settings.mjs;
+/// (event, matcher). Keep in sync with HOOK_EVENTS in scripts/lib/agents.mjs;
 /// protocol.rs maps the raw payloads to pet states.
 const EVENTS: &[(&str, Option<&str>)] = &[
     ("Stop", None),

@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
+  addAiderNotify,
   addBitlingHooks,
+  addCursorHooks,
+  CURSOR_HOOK_EVENTS,
+  removeAiderNotify,
+  removeCursorHooks,
   addCodexNotify,
   GEMINI_HOOK_EVENTS,
   removeCodexNotify,
@@ -9,7 +14,7 @@ import {
   HOOK_EVENTS,
   hookCommand,
   removeBitlingHooks,
-} from "./claude-settings.mjs";
+} from "./agents.mjs";
 
 const SCRIPT = "/home/me/.bitling/bitling-hook.mjs";
 
@@ -100,4 +105,28 @@ test("Codex notify line goes before tables and comes off cleanly", () => {
 
 test("Codex: an existing user notify is never overwritten", () => {
   assert.throws(() => addCodexNotify('notify = ["say", "hi"]\n', SCRIPT), /already has a `notify`/);
+});
+
+test("Cursor hooks.json gets flat command entries and keeps the user's", () => {
+  const before = { version: 1, hooks: { stop: [{ command: "./notify.sh" }] } };
+  const added = addCursorHooks(before, SCRIPT);
+  assert.equal(added.hooks.stop.length, 2);
+  assert.equal(added.hooks.beforeSubmitPrompt[0].command, `node "${SCRIPT}" working --source cursor`);
+  assert.equal(countCursor(addCursorHooks(added, SCRIPT)), CURSOR_HOOK_EVENTS.length);
+  assert.deepEqual(removeCursorHooks(added).config, before);
+});
+
+const countCursor = (config) => removeCursorHooks(config).removed;
+
+test("Aider: adds notifications + command, removes only its own lines", () => {
+  const yaml = "model: sonnet\nauto-commits: false\n";
+  const added = addAiderNotify(yaml, SCRIPT);
+  assert.match(added, /^notifications: true # bitling$/m);
+  assert.match(added, new RegExp(`^notifications_command: 'node "${SCRIPT}" done --source aider' # bitling$`, "m"));
+  assert.equal(addAiderNotify(added, SCRIPT), added, "re-installing changes nothing");
+  assert.equal(removeAiderNotify(added).yaml, yaml);
+  // Keeps an existing `notifications: true`, refuses a foreign command or notifications off.
+  assert.doesNotMatch(addAiderNotify("notifications: true\n", SCRIPT), /notifications: true # bitling/);
+  assert.throws(() => addAiderNotify("notifications_command: say hi\n", SCRIPT), /already has/);
+  assert.throws(() => addAiderNotify("notifications: false\n", SCRIPT), /turns notifications off/);
 });
