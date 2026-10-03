@@ -13,7 +13,8 @@ things are the way they are, what has been verified, and what to do next.
 - Adapters for Gemini CLI, Codex CLI, Cursor, Aider, OpenCode (`--agent ...`).
 - Multiple agent sessions with project names, tray icon, native menu, remembered position,
   launch at login, single instance, click-through outside the pet, daily update check.
-- CI on every push; a release workflow (tag → draft release, manual run → artifacts only);
+- CI on every push; a release workflow (tag or manual run with a tag → draft release, manual run
+  without a tag → artifacts only);
   a Pages workflow for the browser playground (`playground.html`).
 - `docs/demo.gif` is a real recording (Claude Code `-p` run, see "Recording the demo").
 
@@ -150,7 +151,10 @@ Data flow: hook → `POST /event` → `AppSink::on_event` (sessions, XP, save) �
 
 ## Next steps
 
-1. Publish the draft release created by the `v0.2.0` tag (check the installers first).
+1. Publish the draft release "Bitling v0.2.0" (Releases page; check the installers first).
+   It was created by a manual run of the release workflow with `tag: v0.2.0`; the git tag
+   appears when the release is published. Next releases: bump the version in package.json,
+   Cargo.toml and tauri.conf.json, then push a `vX.Y.Z` tag or run the workflow with that tag.
 2. Enable GitHub Pages (Settings → Pages → Source: GitHub Actions) and run the "Playground"
    workflow, so the README's "Try it in your browser" link works.
 3. Launch the macOS and Windows builds by hand: transparency, click-through, tray, autostart,
