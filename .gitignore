@@ -16,3 +16,4 @@ src-tauri/gen/schemas/
 
 # Local sprite previews (scripts/render-sprites.mjs --preview)
 docs/preview-*.png
+dist-site/

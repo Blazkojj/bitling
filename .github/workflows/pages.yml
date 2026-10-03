@@ -1,0 +1,42 @@
+name: Playground
+
+# Publishes the browser playground (playground.html) to GitHub Pages.
+# One-time setup: Settings → Pages → Source: "GitHub Actions". Then run this
+# workflow from the Actions tab; it also runs whenever a release is published.
+on:
+  workflow_dispatch:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Build the playground
+        run: |
+          npm run site
+          mv dist-site/playground.html dist-site/index.html
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist-site
+      - id: deployment
+        uses: actions/deploy-pages@v4

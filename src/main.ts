@@ -385,6 +385,45 @@ window.addEventListener("keydown", (e) => {
 });
 
 // ---------------------------------------------------------------------------
+// Browser API: lets the playground page (playground.html) drive the pet.
+
+export interface BrowserApi {
+  show(state: PetState, message?: string): void;
+  say(text: string, kind?: PetState): void;
+  pet(): void;
+  party(): void;
+  demo(): void;
+  skin(skin: SkinId): void;
+  size(size: Config["size"]): void;
+  level(level: number): void;
+}
+
+declare global {
+  interface Window {
+    bitling?: BrowserApi;
+  }
+}
+
+if (!inTauri) {
+  window.bitling = {
+    show: (state, message) => {
+      showManually(state);
+      if (message) say(message, state, state === "waiting");
+    },
+    say: (text, kind = "done") => say(text, kind),
+    pet,
+    party: celebrate,
+    demo: toggleDemo,
+    skin: (skin) => applyConfig({ ...config, skin }),
+    size: (size) => applyConfig({ ...config, size }),
+    level: (level) => {
+      progress = { xp: 0, level, levelXp: 1, levelSize: 2 };
+      flashHud();
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Startup
 
 async function main(): Promise<void> {

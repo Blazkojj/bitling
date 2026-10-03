@@ -1,17 +1,6 @@
-/* The window is transparent and click-through outside the pet and its bubble.
-   Layout: the pet sits in the bottom-right corner, the bubble floats above it. */
-html,
-body {
-  margin: 0;
-  padding: 0;
-  width: 100%;
-  height: 100%;
-  overflow: hidden;
-  background: transparent;
-  user-select: none;
-  -webkit-user-select: none;
-}
-
+/* The pet and its speech bubble. Positioned inside the nearest positioned
+   ancestor: the whole window in the app, a "desk" box on the playground page.
+   The pet sits in the bottom-right corner, the bubble floats above it. */
 #pet {
   position: absolute;
   right: 0;

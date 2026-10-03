@@ -18,7 +18,8 @@
     "sprites": "node scripts/render-sprites.mjs",
     "test": "npm run test:js && npm run test:rust",
     "test:js": "node --test scripts/lib/agents.test.mjs scripts/lib/updates.test.mjs",
-    "test:rust": "cargo test --manifest-path src-tauri/Cargo.toml"
+    "test:rust": "cargo test --manifest-path src-tauri/Cargo.toml",
+    "site": "vite build --config vite.site.config.ts"
   },
   "engines": {
     "node": ">=20.19"

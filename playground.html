@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Bitling playground</title>
+    <meta name="description" content="A tiny pixel pet that lives in the corner of your screen and reacts to your AI coding agent." />
+    <link rel="icon" href="./src-tauri/icons/32x32.png" />
+    <link rel="stylesheet" href="/src/pet.css" />
+    <link rel="stylesheet" href="/src/playground.css" />
+  </head>
+  <body>
+    <header class="top">
+      <div class="brand">
+        <img src="./src-tauri/icons/128x128.png" alt="" width="40" height="40" />
+        <div>
+          <h1>Bitling</h1>
+          <p>A tiny pixel pet that reacts to your AI coding agent.</p>
+        </div>
+      </div>
+      <nav>
+        <a class="button" href="https://github.com/Blazkojj/bitling">★ Star on GitHub</a>
+        <a class="button primary" href="https://github.com/Blazkojj/bitling/releases">Download</a>
+      </nav>
+    </header>
+
+    <main>
+      <section class="stage">
+        <div class="desktop" aria-label="A pretend desktop with a terminal and Bitling">
+          <div class="terminal">
+            <div class="terminal-bar"><span></span><span></span><span></span><b>~/my-app</b></div>
+            <pre id="terminal"></pre>
+          </div>
+          <div class="desk">
+            <div id="bubble" role="status" aria-live="polite" hidden></div>
+            <canvas id="pet" aria-label="Bitling, a pixel pet"></canvas>
+          </div>
+        </div>
+
+        <div class="controls">
+          <button class="simulate" id="simulate">▶ Simulate a Claude Code session</button>
+
+          <h2>Moods</h2>
+          <div class="row" data-group="state">
+            <button data-state="idle">Idle</button>
+            <button data-state="working">Working</button>
+            <button data-state="waiting" data-message="Bash wants to run `npm test`. Allow?">Waiting</button>
+            <button data-state="done" data-message="Fixed the login bug. All tests pass!">Done</button>
+            <button data-state="error" data-message="npm test: 2 tests failed">Error</button>
+            <button data-state="sleep">Asleep</button>
+            <button data-action="pet">Pet ♥</button>
+          </div>
+
+          <h2>Skin</h2>
+          <div class="row" data-group="skin">
+            <button data-skin="classic" class="on">Classic</button>
+            <button data-skin="pastel">Pastel</button>
+            <button data-skin="midnight">Midnight</button>
+            <button data-skin="gameboy">Game Boy</button>
+          </div>
+
+          <h2>Size</h2>
+          <div class="row" data-group="size">
+            <button data-size="small">Small</button>
+            <button data-size="normal">Normal</button>
+            <button data-size="large" class="on">Large</button>
+          </div>
+
+          <h2>Evolution</h2>
+          <div class="row" data-group="level">
+            <button data-level="1" class="on">Level 1</button>
+            <button data-level="5">Level 5 · sprout</button>
+            <button data-level="10">Level 10 · crown</button>
+            <button data-action="party">Level up! 🎉</button>
+          </div>
+
+          <p class="hint">Double-click the pet to pet it. Keys 1–7 switch moods, S cycles skins.</p>
+        </div>
+      </section>
+
+      <section class="install">
+        <h2>Get your own Bitling</h2>
+        <ol>
+          <li>
+            <strong>Download</strong> the installer for Windows, macOS or Linux from
+            <a href="https://github.com/Blazkojj/bitling/releases">Releases</a> and start it.
+          </li>
+          <li><strong>Right-click the pet → Connect Claude Code…</strong> (backs up your settings first).</li>
+          <li>Give Claude a task and keep an eye on the corner of your screen.</li>
+        </ol>
+        <p>
+          Also works with Gemini CLI, Codex CLI, Cursor, Aider and OpenCode, or anything that can send
+          one HTTP request:
+        </p>
+        <pre class="code">curl -X POST http://127.0.0.1:47800/event \
+  -H "Content-Type: application/json" \
+  -d '{"state": "done", "message": "Deploy finished 🚀"}'</pre>
+      </section>
+    </main>
+
+    <footer>
+      Open source under the MIT license · <a href="https://github.com/Blazkojj/bitling">github.com/Blazkojj/bitling</a>
+    </footer>
+
+    <script type="module" src="/src/playground.ts"></script>
+  </body>
+</html>

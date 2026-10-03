@@ -1,0 +1,274 @@
+/* The browser playground (playground.html), published on GitHub Pages. */
+
+:root {
+  --bg: #f6f7fb;
+  --surface: #ffffff;
+  --text: #1d2b53;
+  --muted: #5f6b8a;
+  --line: #d9deea;
+  --accent: #29adff;
+  --accent-ink: #ffffff;
+  --desktop: linear-gradient(135deg, #8fd3ff 0%, #b8a8ff 55%, #ffb3d1 100%);
+  --terminal: #0b0d12;
+  --terminal-text: #e6e6e6;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0f1220;
+    --surface: #171b2e;
+    --text: #eef1ff;
+    --muted: #9aa3c4;
+    --line: #2a3150;
+    --desktop: linear-gradient(135deg, #1d2b53 0%, #3b2a63 55%, #5b2a4f 100%);
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 16px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+a {
+  color: var(--accent);
+}
+
+.top {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  align-items: center;
+  justify-content: space-between;
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 24px 16px 8px;
+}
+
+.brand {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.brand img {
+  image-rendering: pixelated;
+}
+
+.brand h1 {
+  margin: 0;
+  font-size: 28px;
+  line-height: 1.1;
+}
+
+.brand p {
+  margin: 0;
+  color: var(--muted);
+}
+
+nav {
+  display: flex;
+  gap: 8px;
+}
+
+.button,
+button {
+  font: inherit;
+  font-size: 14px;
+  padding: 7px 12px;
+  border: 2px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.button.primary,
+button.simulate {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-ink);
+  font-weight: 600;
+}
+
+button.on {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+button:hover,
+.button:hover {
+  transform: translateY(-1px);
+}
+
+main {
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 8px 16px 32px;
+}
+
+.stage {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: 24px;
+  align-items: start;
+}
+
+@media (max-width: 860px) {
+  .stage {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .desktop {
+    min-height: 520px;
+  }
+  .terminal {
+    height: 230px;
+  }
+}
+
+/* A pretend desktop: wallpaper, terminal window, the pet in the corner. */
+.desktop {
+  position: relative;
+  min-height: 460px;
+  border-radius: 14px;
+  background: var(--desktop);
+  overflow: hidden;
+  border: 2px solid var(--line);
+}
+
+.terminal {
+  position: absolute;
+  left: 18px;
+  top: 18px;
+  width: min(560px, calc(100% - 36px));
+  height: 300px;
+  border-radius: 10px;
+  background: var(--terminal);
+  color: var(--terminal-text);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.3);
+  overflow: hidden;
+}
+
+.terminal-bar {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  padding: 8px 10px;
+  background: #1c2030;
+  font-size: 12px;
+  color: #9aa3c4;
+}
+
+.terminal-bar span {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #ff5f57;
+}
+
+.terminal-bar span:nth-child(2) {
+  background: #febc2e;
+}
+
+.terminal-bar span:nth-child(3) {
+  background: #28c840;
+}
+
+.terminal-bar b {
+  margin-left: 8px;
+  font-weight: 500;
+}
+
+#terminal {
+  margin: 0;
+  padding: 10px 12px;
+  height: calc(100% - 30px);
+  overflow: hidden;
+  font: 13px/1.5 ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  white-space: pre-wrap;
+}
+
+#terminal .ok {
+  color: #28c840;
+}
+#terminal .err {
+  color: #ff6b6b;
+}
+#terminal .ask {
+  color: #febc2e;
+}
+#terminal .dim {
+  color: #7a8199;
+}
+
+/* Same box as the app window, so pet.css positions everything the same way. */
+.desk {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  width: 288px;
+  height: 278px;
+}
+
+.controls {
+  background: var(--surface);
+  border: 2px solid var(--line);
+  border-radius: 14px;
+  padding: 16px;
+}
+
+.controls h2 {
+  margin: 16px 0 8px;
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+button.simulate {
+  width: 100%;
+  padding: 10px 12px;
+  font-size: 15px;
+}
+
+.hint {
+  margin: 16px 0 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.install {
+  margin-top: 32px;
+  background: var(--surface);
+  border: 2px solid var(--line);
+  border-radius: 14px;
+  padding: 8px 24px 16px;
+}
+
+.code {
+  overflow-x: auto;
+  padding: 12px 14px;
+  border-radius: 8px;
+  background: var(--terminal);
+  color: var(--terminal-text);
+  font: 13px/1.5 ui-monospace, Menlo, Consolas, monospace;
+}
+
+footer {
+  text-align: center;
+  color: var(--muted);
+  font-size: 14px;
+  padding: 0 16px 32px;
+}
