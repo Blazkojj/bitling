@@ -1,6 +1,7 @@
 // Prevents an additional console window on Windows in release builds.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod achievements;
 mod claude_hooks;
 mod config;
 mod menu;
@@ -19,7 +20,7 @@ use tauri::tray::TrayIconBuilder;
 use tauri::{AppHandle, Emitter, Manager, State};
 
 use config::{Config, ConfigPatch};
-use progress::{Progress, ProgressStore};
+use progress::{Moment, Outcome, Progress, ProgressStore};
 use protocol::{AgentState, IncomingEvent};
 use sessions::Sessions;
 
@@ -76,6 +77,16 @@ struct PetEvent {
     project: Option<String>,
     /// The state of this event itself (`state` aggregates all sessions).
     event_state: AgentState,
+    /// Titles of achievements this event unlocked.
+    achievements: Vec<String>,
+}
+
+fn titles(outcome: &Outcome) -> Vec<String> {
+    outcome
+        .unlocked
+        .iter()
+        .map(|a| a.title.to_string())
+        .collect()
 }
 
 #[derive(Serialize)]
@@ -87,6 +98,8 @@ struct Snapshot {
     server_error: Option<String>,
     demo: bool,
     config: Config,
+    /// The pet's name (state.json).
+    name: String,
 }
 
 /// Bridges HTTP requests to the shared state and the frontend.
@@ -97,21 +110,26 @@ struct AppSink {
 
 impl server::EventSink for AppSink {
     fn on_event(&self, event: IncomingEvent) -> Value {
-        let (state, progress, level_up, sessions) = {
+        let (state, progress, outcome, sessions) = {
             let mut core = self.shared.lock();
             let state = core
                 .sessions
                 .update(event.session.as_deref(), event.state, Instant::now());
             core.state = state;
-            // Demo traffic (scripts/demo.mjs) must not farm XP.
-            let level_up = event.source != "demo" && core.store.record(event.state);
+            // Demo traffic (scripts/demo.mjs) must not farm XP or achievements.
+            let outcome = if event.source == "demo" {
+                Outcome::default()
+            } else {
+                core.store.record(event.state, &event.source, Moment::now())
+            };
             (
                 state,
                 core.store.progress(),
-                level_up,
+                outcome,
                 core.sessions.active(),
             )
         };
+        let level_up = outcome.level_up;
         let payload = PetEvent {
             event_state: event.state,
             state,
@@ -121,11 +139,12 @@ impl server::EventSink for AppSink {
             level_up,
             sessions,
             project: event.project,
+            achievements: titles(&outcome),
         };
         if let Err(err) = self.app.emit("bitling:event", payload) {
             eprintln!("[bitling] could not reach the pet window: {err}");
         }
-        if level_up {
+        if level_up || !outcome.unlocked.is_empty() {
             menu::refresh_tray(&self.app);
         }
         json!({ "ok": true, "state": state, "xp": progress.xp, "level": progress.level, "levelUp": level_up })
@@ -166,7 +185,18 @@ fn get_snapshot(shared: State<'_, Shared>, info: State<'_, RunInfo>) -> Snapshot
         server_error: info.server_error.clone(),
         demo: info.demo,
         config: core.config.clone(),
+        name: core.store.name().to_string(),
     }
+}
+
+/// Double-click petting; returns the titles of achievements it unlocked.
+#[tauri::command]
+fn pet(app: AppHandle, shared: State<'_, Shared>) -> Vec<String> {
+    let outcome = shared.lock().store.record_pet();
+    if !outcome.unlocked.is_empty() {
+        menu::refresh_tray(&app);
+    }
+    titles(&outcome)
 }
 
 #[tauri::command]
@@ -245,6 +275,7 @@ fn main() {
             get_snapshot,
             set_config,
             acknowledge,
+            pet,
             popup_menu,
             set_hit_regions,
             offer_update,

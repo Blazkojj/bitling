@@ -5,7 +5,8 @@ use tauri::{AppHandle, Emitter, Manager, Wry};
 use tauri_plugin_autostart::ManagerExt as _;
 use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
 
-use crate::{claude_hooks, config::ConfigPatch, RunInfo, Shared};
+use crate::progress::Moment;
+use crate::{achievements, claude_hooks, config::ConfigPatch, RunInfo, Shared};
 
 /// Skins offered in the menu; ids must match src/skins.ts.
 const SKINS: &[(&str, &str)] = &[
@@ -21,6 +22,7 @@ const STATES: &[(&str, &str)] = &[
     ("waiting", "Waiting for you"),
     ("error", "Error"),
     ("sleep", "Sleeping"),
+    ("love", "Happy (petted)"),
 ];
 
 pub fn build(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
@@ -42,7 +44,54 @@ pub fn build(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
     let connected = claude_connected(app);
     let autostart = app.autolaunch().is_enabled().unwrap_or(false);
 
-    let header = format!("Bitling · Level {} · {} XP", progress.level, progress.xp);
+    let (name, stats, streak, best_streak, unlocked) = {
+        let core = shared.lock();
+        let saved = &core.store.saved;
+        (
+            core.store.name().to_string(),
+            saved.stats.clone(),
+            core.store.streak_today(Moment::now().day),
+            saved.streak.best,
+            saved.achievements.clone(),
+        )
+    };
+    let header = format!("{name} · Level {} · {} XP", progress.level, progress.xp);
+
+    let stats_menu = Submenu::with_id(
+        app,
+        "stats",
+        format!(
+            "Stats and achievements ({}/{})",
+            unlocked.len(),
+            achievements::ALL.len()
+        ),
+        true,
+    )?;
+    let days = |n: u32| {
+        if n == 1 {
+            "1 day".to_string()
+        } else {
+            format!("{n} days")
+        }
+    };
+    for line in [
+        format!("Tasks done: {}", stats.done),
+        format!("Streak: {} (best {})", days(streak), days(best_streak)),
+        format!("Approvals asked: {}", stats.waiting),
+        format!("Errors survived: {}", stats.error),
+        format!("Pets: {}", stats.pets),
+    ] {
+        stats_menu.append(&MenuItem::new(app, line, false, None::<&str>)?)?;
+    }
+    stats_menu.append(&PredefinedMenuItem::separator(app)?)?;
+    for a in achievements::ALL {
+        let label = if unlocked.iter().any(|id| id == a.id) {
+            format!("🏆 {}", a.title)
+        } else {
+            format!("🔒 {}: {}", a.title, a.hint)
+        };
+        stats_menu.append(&MenuItem::new(app, label, false, None::<&str>)?)?;
+    }
     let status = match &info.server_error {
         Some(err) => format!("⚠ {err}"),
         None if sessions > 1 => format!("Watching {sessions} agent sessions"),
@@ -79,6 +128,7 @@ pub fn build(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
             &MenuItem::with_id(app, "update", update_label, update.is_some(), None::<&str>)?,
             &PredefinedMenuItem::separator(app)?,
             &MenuItem::with_id(app, "demo", "Play demo", true, None::<&str>)?,
+            &stats_menu,
             &states,
             &skins,
             &CheckMenuItem::with_id(
