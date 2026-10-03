@@ -13,6 +13,8 @@ pub struct Config {
     pub sound: bool,
     /// Speech bubbles with the agent's message.
     pub bubbles: bool,
+    /// Look for a newer release on GitHub once a day.
+    pub updates: bool,
     /// Last window position (physical pixels), restored on start.
     pub position: Option<(i32, i32)>,
 }
@@ -23,6 +25,7 @@ impl Default for Config {
             skin: "classic".into(),
             sound: false,
             bubbles: true,
+            updates: true,
             position: None,
         }
     }
@@ -35,6 +38,7 @@ pub struct ConfigPatch {
     pub skin: Option<String>,
     pub sound: Option<bool>,
     pub bubbles: Option<bool>,
+    pub updates: Option<bool>,
 }
 
 impl Config {
@@ -69,6 +73,9 @@ impl Config {
         if let Some(bubbles) = patch.bubbles {
             self.bubbles = bubbles;
         }
+        if let Some(updates) = patch.updates {
+            self.updates = updates;
+        }
     }
 }
 
@@ -87,6 +94,7 @@ mod tests {
             skin: Some("gameboy".into()),
             sound: Some(true),
             bubbles: None,
+            updates: Some(false),
         });
         config.position = Some((10, -20));
         config.save(&path);

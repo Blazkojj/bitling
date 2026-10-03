@@ -7,6 +7,7 @@ import { skinPalette, SKINS, type SkinId } from "./skins.ts";
 import {
   ACCESSORIES,
   ANIMATIONS,
+  FLOATING_STAMPS,
   OUTLINE,
   SHADOW,
   SPRITE_H,
@@ -73,7 +74,7 @@ export function composeScene(state: PetState, frameIndex: number, opts: SceneOpt
   }
   for (const fx of frame.fx ?? []) {
     // Decorations stay put while the body jumps or shakes.
-    stamp(art, STAMPS[fx.stamp], SPRITE_X + fx.x, SPRITE_Y + fx.y, palette);
+    if (!FLOATING_STAMPS.has(fx.stamp)) stamp(art, STAMPS[fx.stamp], SPRITE_X + fx.x, SPRITE_Y + fx.y, palette);
   }
   if (opts.hud && opts.hud.label !== false) drawText(art, `LV${opts.hud.level}`, 1, 0);
 
@@ -88,6 +89,10 @@ export function composeScene(state: PetState, frameIndex: number, opts: SceneOpt
         scene[idx(x, y)] = outline;
       }
     }
+  }
+
+  for (const fx of frame.fx ?? []) {
+    if (FLOATING_STAMPS.has(fx.stamp)) stamp(scene, STAMPS[fx.stamp], SPRITE_X + fx.x, SPRITE_Y + fx.y, palette);
   }
 
   // 3. Soft shadow on the ground; it shrinks while the pet is in the air.

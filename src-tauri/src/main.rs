@@ -30,7 +30,18 @@ pub struct Core {
     sessions: Sessions,
     config: Config,
     config_path: PathBuf,
+    /// A newer release found by the frontend's update check.
+    update: Option<Update>,
 }
+
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct Update {
+    version: String,
+    url: String,
+}
+
+/// Only release pages of this repository may be opened from the menu.
+const RELEASES_URL: &str = "https://github.com/Blazkojj/bitling/releases";
 
 #[derive(Clone)]
 pub struct Shared(Arc<Mutex<Core>>);
@@ -61,6 +72,8 @@ struct PetEvent {
     progress: Progress,
     level_up: bool,
     sessions: usize,
+    /// Folder the agent works in, for bubbles when several sessions run.
+    project: Option<String>,
     /// The state of this event itself (`state` aggregates all sessions).
     event_state: AgentState,
 }
@@ -107,6 +120,7 @@ impl server::EventSink for AppSink {
             progress,
             level_up,
             sessions,
+            project: event.project,
         };
         if let Err(err) = self.app.emit("bitling:event", payload) {
             eprintln!("[bitling] could not reach the pet window: {err}");
@@ -177,6 +191,17 @@ fn popup_menu(app: AppHandle, window: tauri::Window, x: f64, y: f64) -> Result<(
         .map_err(|e| e.to_string())
 }
 
+/// The frontend found a newer release; offer it in the menu.
+#[tauri::command]
+fn offer_update(app: AppHandle, shared: State<'_, Shared>, update: Update) -> Result<(), String> {
+    if !update.url.starts_with(RELEASES_URL) {
+        return Err("not a Bitling release URL".into());
+    }
+    shared.lock().update = Some(update);
+    menu::refresh_tray(&app);
+    Ok(())
+}
+
 #[tauri::command]
 fn set_hit_regions(regions: State<'_, window::HitRegions>, rects: Vec<window::Rect>) {
     *regions.0.lock().unwrap_or_else(|e| e.into_inner()) = Some(rects);
@@ -222,6 +247,7 @@ fn main() {
             acknowledge,
             popup_menu,
             set_hit_regions,
+            offer_update,
             quit
         ])
         .on_menu_event(|app, event| menu::handle(app, event.id().as_ref()))
@@ -239,6 +265,7 @@ fn main() {
                 sessions: Sessions::default(),
                 config: Config::load(&config_path),
                 config_path,
+                update: None,
             };
             let saved_position = core.config.position;
             let shared = Shared(Arc::new(Mutex::new(core)));

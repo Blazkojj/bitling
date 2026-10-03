@@ -39,6 +39,8 @@ pub struct IncomingEvent {
     pub message: Option<String>,
     /// Agent session the event belongs to (Claude Code's `session_id`).
     pub session: Option<String>,
+    /// Project the agent works in (folder name), shown when several run at once.
+    pub project: Option<String>,
 }
 
 /// Parses a request body. `Ok(None)` means "valid, but nothing to show"
@@ -60,6 +62,7 @@ pub fn parse_event(body: &[u8]) -> Result<Option<IncomingEvent>, String> {
                 .collect(),
             message: str_field(&value, "message").map(trim_message),
             session: str_field(&value, "session").map(short_id),
+            project: str_field(&value, "project").map(project_name),
         }));
     }
 
@@ -104,6 +107,7 @@ fn from_claude_hook(event: &str, payload: &Value) -> Option<IncomingEvent> {
         source: "claude-code".into(),
         message: message.map(trim_message),
         session: str_field(payload, "session_id").map(short_id),
+        project: str_field(payload, "cwd").map(project_name),
     })
 }
 
@@ -117,6 +121,13 @@ pub fn first_line(text: &str) -> Option<&str> {
                 .trim()
         })
         .find(|line| !line.is_empty())
+}
+
+/// Last path component of a folder ("/home/me/my-app" -> "my-app"), max 40 chars.
+fn project_name(path: &str) -> String {
+    let trimmed = path.trim_end_matches(['/', '\\']);
+    let name = trimmed.rsplit(['/', '\\']).next().unwrap_or(trimmed);
+    name.chars().take(40).collect()
 }
 
 fn short_id(id: &str) -> String {
@@ -224,10 +235,15 @@ mod tests {
         assert_eq!(event.session.as_deref(), Some("abc"));
         assert_eq!(event.message.as_deref(), Some("Fixed the login bug"));
 
-        let event = parse(r#"{"state":"waiting","session":"s1"}"#)
+        let event = parse(r#"{"state":"waiting","session":"s1","project":"/home/me/my-app/"}"#)
             .unwrap()
             .unwrap();
         assert_eq!(event.session.as_deref(), Some("s1"));
+        assert_eq!(event.project.as_deref(), Some("my-app"));
+        let raw = parse(r#"{"hook_event_name":"Stop","cwd":"C:\\code\\shop"}"#)
+            .unwrap()
+            .unwrap();
+        assert_eq!(raw.project.as_deref(), Some("shop"));
     }
 
     #[test]

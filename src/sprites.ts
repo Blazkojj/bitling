@@ -11,9 +11,10 @@
 //   A  antenna tip        L  legs            P  pink (cheeks, tongue)
 //   R  alert red          W  white           g/G leaf green (accessories)
 
-export type PetState = "idle" | "working" | "done" | "waiting" | "error";
+/** `sleep` is the pet's own mood (long idle); agents never send it. */
+export type PetState = "idle" | "working" | "done" | "waiting" | "error" | "sleep";
 
-export const PET_STATES: readonly PetState[] = ["idle", "working", "done", "waiting", "error"];
+export const PET_STATES: readonly PetState[] = ["idle", "working", "done", "waiting", "error", "sleep"];
 
 export const SPRITE_W = 10;
 export const SPRITE_H = 9;
@@ -25,7 +26,10 @@ export type Grid = readonly string[];
 export type Palette = Readonly<Record<string, string>>;
 
 /** Small decorations drawn around the creature (sparkles, "!", sweat drop). */
-export type StampName = "sparkle" | "twinkle" | "bang" | "drop" | "dot1" | "dot2" | "dot3";
+export type StampName = "sparkle" | "twinkle" | "bang" | "drop" | "dot1" | "dot2" | "dot3" | "z" | "Z";
+
+/** Stamps drawn after the outline pass: thin glyphs that an outline would fill in. */
+export const FLOATING_STAMPS: ReadonlySet<StampName> = new Set(["z", "Z"]);
 
 export interface Fx {
   stamp: StampName;
@@ -110,6 +114,9 @@ export const STAMPS: Readonly<Record<StampName, Grid>> = {
   dot1: ["w...."],
   dot2: ["w.w.."],
   dot3: ["w.w.w"],
+  // Zzz while sleeping (drawn without an outline, see FLOATING_STAMPS)
+  z: ["bbb", ".b.", "b..", "bbb"],
+  Z: ["bbb", "..b", ".b.", "b..", "bbb"],
   drop: [
     ".b",
     "bw",
@@ -153,6 +160,34 @@ const IDLE_BLINK: Grid = [
   ".BBEBBEBD.",
   ".BBBBBBBD.",
   ".BBBEEBBD.",
+  "..DDDDDD..",
+  "..L....L..",
+];
+
+// ---------------------------------------------------------------------------
+// sleep: closed eyes, antenna drooping to the side, slow breathing, Zzz
+
+const SLEEP_IN: Grid = [
+  "..........",
+  "..........",
+  "....AE....",
+  "..HHBBBB..",
+  ".BHBBBBBB.",
+  ".BEEBBEED.",
+  ".BBBBBBBD.",
+  "..DDDDDD..",
+  "..L....L..",
+];
+
+// Breathing out: one pixel flatter.
+const SLEEP_OUT: Grid = [
+  "..........",
+  "..........",
+  "..........",
+  "...AE.....",
+  ".HHBBBBBB.",
+  ".BEEBBEED.",
+  ".BBBBBBBD.",
   "..DDDDDD..",
   "..L....L..",
 ];
@@ -287,6 +322,17 @@ const ERROR_WOBBLE: Grid = [
 // ---------------------------------------------------------------------------
 
 export const ANIMATIONS: Readonly<Record<PetState, Animation>> = {
+  sleep: {
+    palette: palette("#29adff", "#1a75c9", "#a8e4ff", "#ff77a8"),
+    frames: [
+      { sprite: SLEEP_IN, fx: [{ stamp: "z", x: 8, y: -1 }] },
+      { sprite: SLEEP_OUT, fx: [{ stamp: "z", x: 8, y: 0 }, { stamp: "Z", x: 10, y: -6 }] },
+    ],
+    steps: [
+      { frame: 0, ms: 1400 },
+      { frame: 1, ms: 1400 },
+    ],
+  },
   idle: {
     palette: palette("#29adff", "#1a75c9", "#a8e4ff", "#ff77a8"),
     frames: [{ sprite: IDLE_OPEN }, { sprite: IDLE_BREATHE }, { sprite: IDLE_BLINK }],

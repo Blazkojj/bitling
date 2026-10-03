@@ -20,18 +20,24 @@ const STATES: &[(&str, &str)] = &[
     ("done", "Done"),
     ("waiting", "Waiting for you"),
     ("error", "Error"),
+    ("sleep", "Sleeping"),
 ];
 
 pub fn build(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
     let shared = app.state::<Shared>();
     let info = app.state::<RunInfo>();
-    let (progress, sessions, config) = {
+    let (progress, sessions, config, update) = {
         let core = shared.lock();
         (
             core.store.progress(),
             core.sessions.active(),
             core.config.clone(),
+            core.update.clone(),
         )
+    };
+    let update_label = match &update {
+        Some(u) => format!("✨ Download Bitling {}…", u.version),
+        None => "Bitling is up to date".into(),
     };
     let connected = claude_connected(app);
     let autostart = app.autolaunch().is_enabled().unwrap_or(false);
@@ -70,6 +76,7 @@ pub fn build(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
         &[
             &MenuItem::with_id(app, "header", header, false, None::<&str>)?,
             &MenuItem::with_id(app, "status", status, false, None::<&str>)?,
+            &MenuItem::with_id(app, "update", update_label, update.is_some(), None::<&str>)?,
             &PredefinedMenuItem::separator(app)?,
             &MenuItem::with_id(app, "demo", "Play demo", true, None::<&str>)?,
             &states,
@@ -96,6 +103,14 @@ pub fn build(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
                 "Launch at login",
                 true,
                 autostart,
+                None::<&str>,
+            )?,
+            &CheckMenuItem::with_id(
+                app,
+                "updates",
+                "Check for updates",
+                true,
+                config.updates,
                 None::<&str>,
             )?,
             &PredefinedMenuItem::separator(app)?,
@@ -153,20 +168,31 @@ pub fn handle(app: &AppHandle, id: &str) {
                 eprintln!("[bitling] launch at login: {err}");
             }
         }
-        "sound" | "bubbles" => {
+        "sound" | "bubbles" | "updates" => {
             let current = shared.lock().config.clone();
-            let patch = if id == "sound" {
-                ConfigPatch {
+            let patch = match id {
+                "sound" => ConfigPatch {
                     sound: Some(!current.sound),
                     ..Default::default()
-                }
-            } else {
-                ConfigPatch {
+                },
+                "bubbles" => ConfigPatch {
                     bubbles: Some(!current.bubbles),
                     ..Default::default()
-                }
+                },
+                _ => ConfigPatch {
+                    updates: Some(!current.updates),
+                    ..Default::default()
+                },
             };
             crate::update_config(app, patch);
+        }
+        "update" => {
+            let update = shared.lock().update.clone();
+            if let Some(u) = update {
+                if let Err(err) = tauri_plugin_opener::open_url(&u.url, None::<&str>) {
+                    eprintln!("[bitling] could not open {}: {err}", u.url);
+                }
+            }
         }
         _ => {
             if let Some(skin) = id.strip_prefix("skin:") {

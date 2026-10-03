@@ -17,7 +17,7 @@
     "hooks:uninstall": "node scripts/install-hooks.mjs --uninstall",
     "sprites": "node scripts/render-sprites.mjs",
     "test": "npm run test:js && npm run test:rust",
-    "test:js": "node --test scripts/lib/agents.test.mjs",
+    "test:js": "node --test scripts/lib/agents.test.mjs scripts/lib/updates.test.mjs",
     "test:rust": "cargo test --manifest-path src-tauri/Cargo.toml"
   },
   "engines": {

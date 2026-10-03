@@ -7,8 +7,8 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import type { SkinId } from "./skins.ts";
 import type { PetState } from "./sprites.ts";
 
-/** States in the HTTP protocol; each one has its own animation. */
-export type AgentState = PetState;
+/** States in the HTTP protocol ("sleep" is the pet's own idea, agents never send it). */
+export type AgentState = Exclude<PetState, "sleep">;
 
 export interface Progress {
   xp: number;
@@ -30,12 +30,15 @@ export interface PetEvent {
   sessions: number;
   /** State of this very event; `state` is what the pet shows across all sessions. */
   eventState: AgentState;
+  /** Folder the agent works in, e.g. "my-app". */
+  project: string | null;
 }
 
 export interface Config {
   skin: SkinId;
   sound: boolean;
   bubbles: boolean;
+  updates: boolean;
 }
 
 export interface Snapshot {
@@ -89,6 +92,17 @@ export function acknowledge(): void {
 
 export function setConfig(patch: Partial<Config>): void {
   if (inTauri) void invoke("set_config", { patch });
+}
+
+/** Offers a newer release in the menu (the backend only accepts Bitling release URLs). */
+export function offerUpdate(version: string, url: string): void {
+  if (inTauri) void invoke("offer_update", { update: { version, url } });
+}
+
+export async function appVersion(): Promise<string | null> {
+  if (!inTauri) return null;
+  const { getVersion } = await import("@tauri-apps/api/app");
+  return getVersion();
 }
 
 /** Tells the backend which parts of the window should catch the mouse. */

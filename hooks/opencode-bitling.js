@@ -31,7 +31,7 @@ function toPet(event) {
   }
 }
 
-export const BitlingPlugin = async () => ({
+export const BitlingPlugin = async ({ directory } = {}) => ({
   event: async ({ event }) => {
     const pet = toPet(event);
     if (!pet) return;
@@ -40,7 +40,13 @@ export const BitlingPlugin = async () => ({
       await fetch(`http://127.0.0.1:${PORT}/event`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ state, message, source: "opencode", session: event.properties?.sessionID ?? null }),
+        body: JSON.stringify({
+          state,
+          message,
+          source: "opencode",
+          session: event.properties?.sessionID ?? null,
+          project: directory ? directory.split(/[\\/]/).filter(Boolean).pop() : null,
+        }),
         signal: AbortSignal.timeout(1500),
       });
     } catch {

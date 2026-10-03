@@ -19,6 +19,7 @@
 // it with the agent. It has no dependencies on purpose.
 
 import http from "node:http";
+import path from "node:path";
 
 const STATES = new Set(["idle", "working", "done", "waiting", "error"]);
 const PORT = Number(process.env.BITLING_PORT) || 47800;
@@ -54,7 +55,9 @@ await post({
   source,
   event: payload?.hook_event_name ?? payload?.type ?? null,
   message: describe(payload),
-  session: payload?.session_id ?? payload?.["thread-id"] ?? null,
+  session: payload?.session_id ?? payload?.["thread-id"] ?? payload?.conversation_id ?? null,
+  // Folder name, shown in the bubble when several agents run at once.
+  project: path.basename(payload?.cwd ?? payload?.workspace_roots?.[0] ?? process.cwd()) || null,
 });
 finish();
 

@@ -91,7 +91,7 @@ if (args.has("--gif")) {
  */
 async function writeStatesGif(file) {
   const { default: gifenc } = await import("gifenc");
-  const states = ["idle", "working", "waiting", "done", "error"];
+  const states = ["idle", "working", "waiting", "done", "error", "sleep"];
   const scale = 6;
   const gap = 12;
   const rows = SCENE_H - 1; // the bottom row is only used by the hover HUD

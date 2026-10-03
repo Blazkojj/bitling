@@ -16,6 +16,7 @@ tauri-build = { version = "2", features = [] }
 tauri = { version = "2", features = ["macos-private-api", "tray-icon"] }
 tauri-plugin-autostart = "2"
 tauri-plugin-dialog = "2"
+tauri-plugin-opener = "2"
 tauri-plugin-single-instance = "2"
 serde = { version = "1", features = ["derive"] }
 # preserve_order: keep the key order of the user's Claude Code settings file.

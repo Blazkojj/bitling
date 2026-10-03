@@ -1,11 +1,13 @@
 import { AnimationPlayer } from "./animation.ts";
 import {
   acknowledge,
+  appVersion,
   getSnapshot,
   inTauri,
   onCommand,
   onConfig,
   onPetEvent,
+  offerUpdate,
   setConfig,
   setHitRegions,
   showContextMenu,
@@ -20,6 +22,7 @@ import { composeScene, PARTY_MS, type Hud } from "./scene.ts";
 import { SKIN_IDS, type SkinId } from "./skins.ts";
 import { play } from "./sound.ts";
 import { PET_STATES, type PetState } from "./sprites.ts";
+import { checkForUpdate } from "./updates.ts";
 
 /** Demo mode tells a little story through every state, e.g. for recording a GIF. */
 const DEMO_SEQUENCE: ReadonlyArray<[PetState, number, string | null]> = [
@@ -44,8 +47,20 @@ const BUBBLE_MS = 7000;
 const MIN_REACTION_MS = 2000;
 /** Mouse travel (px) before a press turns into a window drag instead of a click. */
 const DRAG_THRESHOLD = 3;
+/** Nothing happening for this long and the pet dozes off... */
+const SLEEP_AFTER_MS = 10 * 60_000;
+/** ...sooner at night (22:00 to 06:00). */
+const NIGHT_SLEEP_AFTER_MS = 3 * 60_000;
+const UPDATE_CHECK_MS = 24 * 60 * 60_000;
 
-const KEY_STATES: Record<string, PetState> = { "1": "idle", "2": "done", "3": "waiting", "4": "error", "5": "working" };
+const KEY_STATES: Record<string, PetState> = {
+  "1": "idle",
+  "2": "done",
+  "3": "waiting",
+  "4": "error",
+  "5": "working",
+  "6": "sleep",
+};
 
 const canvas = document.querySelector<HTMLCanvasElement>("#pet")!;
 const bubble = document.querySelector<HTMLDivElement>("#bubble")!;
@@ -53,11 +68,12 @@ const renderer = new CanvasRenderer(canvas);
 const player = new AnimationPlayer();
 
 let progress: Progress | null = null;
-let config: Config = { skin: "classic", sound: false, bubbles: true };
+let config: Config = { skin: "classic", sound: false, bubbles: true, updates: true };
 let hovering = false;
 let hudUntil = 0;
 let partyStart = -Infinity;
 let shownSince = 0;
+let lastActivity = performance.now();
 let frameTimer: ReturnType<typeof setTimeout> | undefined;
 let demoTimer: ReturnType<typeof setTimeout> | undefined;
 let calmTimer: ReturnType<typeof setTimeout> | undefined;
@@ -93,7 +109,7 @@ function toHud(p: Progress): Hud {
   return { level: p.level, progress: p.levelSize > 0 ? p.levelXp / p.levelSize : 0 };
 }
 
-function setState(state: AgentState): void {
+function setState(state: PetState): void {
   clearTimeout(calmTimer);
   if (state !== player.current) {
     player.play(state, performance.now());
@@ -114,6 +130,22 @@ function applyAgentState(state: AgentState): void {
     return;
   }
   setState(state);
+}
+
+/** Something happened (hover, click, key): wake up if asleep. */
+function touch(): void {
+  lastActivity = performance.now();
+  if (player.current === "sleep") setState("idle");
+}
+
+/** Dozes off after a long quiet time; agent events and the user wake it up. */
+function maybeFallAsleep(): void {
+  const hour = new Date().getHours();
+  const limit = hour >= 22 || hour < 6 ? NIGHT_SLEEP_AFTER_MS : SLEEP_AFTER_MS;
+  const calm = player.current === "idle" || player.current === "done";
+  if (calm && demoTimer === undefined && bubble.hidden && performance.now() - lastActivity > limit) {
+    setState("sleep");
+  }
 }
 
 function flashHud(ms = HUD_FLASH_MS): void {
@@ -151,6 +183,15 @@ function hideBubble(): void {
   bubble.hidden = true;
   bubble.className = "";
   updateHitRegions();
+}
+
+async function checkUpdates(): Promise<void> {
+  const version = await appVersion();
+  if (!version || !config.updates) return;
+  const release = await checkForUpdate(version);
+  if (!release) return;
+  offerUpdate(release.version, release.url);
+  say(`Bitling ${release.version} is out! Right-click me to download it.`, "done");
 }
 
 function defaultMessage(state: PetState, levelUp: boolean, level: number): string | null {
@@ -235,6 +276,7 @@ canvas.addEventListener("mousemove", (e) => {
 canvas.addEventListener("mouseup", (e) => {
   if (e.button !== 0 || !press) return;
   press = null;
+  lastActivity = performance.now();
   // A plain click means "seen it": calm the pet down.
   acknowledge();
   hideBubble();
@@ -243,6 +285,7 @@ canvas.addEventListener("mouseup", (e) => {
 
 canvas.addEventListener("mouseenter", () => {
   hovering = true;
+  touch();
   render();
 });
 
@@ -261,6 +304,7 @@ bubble.addEventListener("contextmenu", openMenu);
 bubble.addEventListener("click", hideBubble);
 
 window.addEventListener("keydown", (e) => {
+  lastActivity = performance.now();
   const state = KEY_STATES[e.key];
   if (state) showManually(state);
   else if (e.key === "d" || e.key === "D") toggleDemo();
@@ -282,12 +326,15 @@ async function main(): Promise<void> {
 
   await onPetEvent((event) => {
     progress = event.progress;
+    lastActivity = performance.now();
     stopDemo(); // a real agent event always wins over the demo loop
     applyAgentState(event.state);
     // The bubble talks about this event (one session), even when another
     // session's pending approval keeps the pet in "waiting".
     const kind = event.eventState;
-    const message = event.message ?? defaultMessage(kind, event.levelUp, event.progress.level);
+    let message = event.message ?? defaultMessage(kind, event.levelUp, event.progress.level);
+    // With several agents at work, say which project this is about.
+    if (message && event.project && event.sessions > 1) message = `[${event.project}] ${message}`;
     if (event.levelUp) {
       celebrate();
       say(defaultMessage(kind, true, event.progress.level), "done");
@@ -324,6 +371,10 @@ async function main(): Promise<void> {
   if (params.has("say")) say(params.get("say"), pinned ?? "done", true);
   if (params.has("demo") || snapshot?.demo) startDemo();
   render();
+
+  setInterval(maybeFallAsleep, 20_000);
+  void checkUpdates();
+  setInterval(() => void checkUpdates(), UPDATE_CHECK_MS);
 }
 
 void main();
