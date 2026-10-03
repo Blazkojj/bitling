@@ -109,6 +109,17 @@ pub fn build(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
             None::<&str>,
         )?)?;
     }
+    let sizes = Submenu::with_id(app, "sizes", "Size", true)?;
+    for (id, label, _) in crate::window::SIZES {
+        sizes.append(&CheckMenuItem::with_id(
+            app,
+            format!("size:{id}"),
+            *label,
+            true,
+            config.size == *id,
+            None::<&str>,
+        )?)?;
+    }
     let states = Submenu::with_id(app, "states", "Show state", true)?;
     for (id, name) in STATES {
         states.append(&MenuItem::with_id(
@@ -131,6 +142,7 @@ pub fn build(app: &AppHandle) -> tauri::Result<Menu<Wry>> {
             &stats_menu,
             &states,
             &skins,
+            &sizes,
             &CheckMenuItem::with_id(
                 app,
                 "sound",
@@ -250,6 +262,14 @@ pub fn handle(app: &AppHandle, id: &str) {
                     app,
                     ConfigPatch {
                         skin: Some(skin.into()),
+                        ..Default::default()
+                    },
+                );
+            } else if let Some(size) = id.strip_prefix("size:") {
+                crate::update_config(
+                    app,
+                    ConfigPatch {
+                        size: Some(size.into()),
                         ..Default::default()
                     },
                 );

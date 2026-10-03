@@ -164,13 +164,19 @@ impl server::EventSink for AppSink {
 
 /// Saves a config change and tells the frontend about it.
 pub fn update_config(app: &AppHandle, patch: ConfigPatch) {
-    let config = {
+    let (config, old_size) = {
         let shared = app.state::<Shared>();
         let mut core = shared.lock();
+        let old_size = core.config.size.clone();
         core.config.apply(patch);
         core.config.save(&core.config_path);
-        core.config.clone()
+        (core.config.clone(), old_size)
     };
+    if config.size != old_size {
+        if let Some(window) = window::main_window(app) {
+            window::resize(&window, &old_size, &config.size, true);
+        }
+    }
     let _ = app.emit("bitling:config", config);
     menu::refresh_tray(app);
 }
@@ -299,6 +305,7 @@ fn main() {
                 update: None,
             };
             let saved_position = core.config.position;
+            let pet_size = core.config.size.clone();
             let shared = Shared(Arc::new(Mutex::new(core)));
             app.manage(shared.clone());
 
@@ -338,7 +345,8 @@ fn main() {
                 .build(app)?;
 
             if let Some(window) = window::main_window(&handle) {
-                window::place(&window, saved_position);
+                window::resize(&window, "normal", &pet_size, false);
+                window::place(&window, saved_position, &pet_size);
                 window::track_position(&handle, &window);
                 window.show()?;
             }

@@ -4,12 +4,46 @@ use serde::Deserialize;
 use std::sync::Mutex;
 use std::thread;
 use std::time::Duration;
-use tauri::{AppHandle, Manager, PhysicalPosition, WebviewWindow};
+use tauri::{AppHandle, LogicalSize, Manager, PhysicalPosition, WebviewWindow};
 
 use crate::Shared;
 
 /// Gap between the pet and the screen corner, in logical pixels.
 const CORNER_MARGIN: f64 = 16.0;
+
+/// (id, label, CSS pixels per big pixel). Keep in sync with SCALES in src/bridge.ts.
+pub const SIZES: &[(&str, &str, f64)] = &[
+    ("small", "Small", 6.0),
+    ("normal", "Normal", 8.0),
+    ("large", "Large", 11.0),
+];
+
+/// Window size for a pet size: the 16x18 scene plus room for the speech bubble
+/// (240x224 at the normal size).
+pub fn window_size(size: &str) -> LogicalSize<f64> {
+    let scale = SIZES
+        .iter()
+        .find(|(id, _, _)| *id == size)
+        .map_or(8.0, |(_, _, s)| *s);
+    LogicalSize::new(16.0 * scale + 112.0, 18.0 * scale + 80.0)
+}
+
+/// Resizes the window for a new pet size. With `keep_corner`, the bottom-right
+/// corner (where the pet sits) stays where it is.
+pub fn resize(window: &WebviewWindow, from: &str, to: &str, keep_corner: bool) {
+    let new = window_size(to);
+    if keep_corner {
+        if let (Ok(pos), Ok(scale)) = (window.outer_position(), window.scale_factor()) {
+            let old = window_size(from);
+            let dx = ((old.width - new.width) * scale).round() as i32;
+            let dy = ((old.height - new.height) * scale).round() as i32;
+            let _ = window.set_position(PhysicalPosition::new(pos.x + dx, pos.y + dy));
+        }
+    }
+    if let Err(err) = window.set_size(new) {
+        eprintln!("[bitling] could not resize the window: {err}");
+    }
+}
 
 /// A rectangle in logical pixels, relative to the window's top-left corner.
 #[derive(Debug, Clone, Copy, Deserialize)]
@@ -31,7 +65,7 @@ pub fn main_window(app: &AppHandle) -> Option<WebviewWindow> {
 }
 
 /// Restores the saved position if it is still on a screen, else the corner.
-pub fn place(window: &WebviewWindow, saved: Option<(i32, i32)>) {
+pub fn place(window: &WebviewWindow, saved: Option<(i32, i32)>, size: &str) {
     if let Some((x, y)) = saved {
         let on_screen = window
             .available_monitors()
@@ -48,20 +82,22 @@ pub fn place(window: &WebviewWindow, saved: Option<(i32, i32)>) {
             return;
         }
     }
-    if let Err(err) = place_in_corner(window) {
+    if let Err(err) = place_in_corner(window, size) {
         eprintln!("[bitling] could not position the window: {err}");
     }
 }
 
 /// Bottom-right corner of the primary screen's work area (above the taskbar / dock).
-fn place_in_corner(window: &WebviewWindow) -> tauri::Result<()> {
+fn place_in_corner(window: &WebviewWindow, pet_size: &str) -> tauri::Result<()> {
     let Some(monitor) = window.primary_monitor()? else {
         return Ok(());
     };
     let area = monitor.work_area();
     // The window has no decorations, so inner size == outer size. (On Linux,
     // outer_size() reports 0x0 until the window manager has mapped it.)
-    let size = window.inner_size()?;
+    // Computed rather than read back: right after a resize (and on Linux
+    // before the window is mapped) the reported size can be stale.
+    let size = window_size(pet_size).to_physical::<u32>(monitor.scale_factor());
     let margin = (CORNER_MARGIN * monitor.scale_factor()).round() as i32;
     let x = area.position.x + area.size.width as i32 - size.width as i32 - margin;
     let y = area.position.y + area.size.height as i32 - size.height as i32 - margin;
@@ -69,8 +105,9 @@ fn place_in_corner(window: &WebviewWindow) -> tauri::Result<()> {
 }
 
 pub fn reset_position(app: &AppHandle) {
+    let size = app.state::<Shared>().lock().config.size.clone();
     if let Some(window) = main_window(app) {
-        let _ = place_in_corner(&window);
+        let _ = place_in_corner(&window, &size);
     }
 }
 

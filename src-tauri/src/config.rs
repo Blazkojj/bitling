@@ -15,6 +15,8 @@ pub struct Config {
     pub bubbles: bool,
     /// Look for a newer release on GitHub once a day.
     pub updates: bool,
+    /// Pet size: "small", "normal" or "large" (see window::SIZES).
+    pub size: String,
     /// Last window position (physical pixels), restored on start.
     pub position: Option<(i32, i32)>,
 }
@@ -26,6 +28,7 @@ impl Default for Config {
             sound: false,
             bubbles: true,
             updates: true,
+            size: "normal".into(),
             position: None,
         }
     }
@@ -39,6 +42,7 @@ pub struct ConfigPatch {
     pub sound: Option<bool>,
     pub bubbles: Option<bool>,
     pub updates: Option<bool>,
+    pub size: Option<String>,
 }
 
 impl Config {
@@ -76,6 +80,9 @@ impl Config {
         if let Some(updates) = patch.updates {
             self.updates = updates;
         }
+        if let Some(size) = patch.size {
+            self.size = size;
+        }
     }
 }
 
@@ -95,6 +102,7 @@ mod tests {
             sound: Some(true),
             bubbles: None,
             updates: Some(false),
+            size: Some("large".into()),
         });
         config.position = Some((10, -20));
         config.save(&path);

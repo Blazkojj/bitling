@@ -41,7 +41,13 @@ export interface Config {
   sound: boolean;
   bubbles: boolean;
   updates: boolean;
+  size: PetSize;
 }
+
+export type PetSize = "small" | "normal" | "large";
+
+/** CSS pixels per big pixel for each size. Keep in sync with window::SIZES in Rust. */
+export const SCALES: Record<PetSize, number> = { small: 6, normal: 8, large: 11 };
 
 export interface Snapshot {
   state: AgentState;

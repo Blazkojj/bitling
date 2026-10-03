@@ -4,6 +4,7 @@ import { PIXEL_SCALE, SCENE_H, SCENE_W, type Scene } from "./scene.ts";
 export class CanvasRenderer {
   private readonly canvas: HTMLCanvasElement;
   private readonly ctx: CanvasRenderingContext2D;
+  private scale = PIXEL_SCALE;
   private cell = PIXEL_SCALE;
   private lastKey = "";
 
@@ -22,13 +23,20 @@ export class CanvasRenderer {
    */
   resize(): void {
     const dpr = window.devicePixelRatio || 1;
-    this.cell = Math.max(1, Math.round(PIXEL_SCALE * dpr));
+    this.cell = Math.max(1, Math.round(this.scale * dpr));
     this.canvas.width = SCENE_W * this.cell;
     this.canvas.height = SCENE_H * this.cell;
-    this.canvas.style.width = `${SCENE_W * PIXEL_SCALE}px`;
-    this.canvas.style.height = `${SCENE_H * PIXEL_SCALE}px`;
+    this.canvas.style.width = `${SCENE_W * this.scale}px`;
+    this.canvas.style.height = `${SCENE_H * this.scale}px`;
     this.ctx.imageSmoothingEnabled = false;
     this.lastKey = "";
+  }
+
+  /** CSS pixels per big pixel (the pet's size). */
+  setScale(scale: number): void {
+    if (scale === this.scale) return;
+    this.scale = scale;
+    this.resize();
   }
 
   draw(scene: Scene): void {

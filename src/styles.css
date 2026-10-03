@@ -25,7 +25,8 @@ body {
 #bubble {
   position: absolute;
   right: 8px;
-  bottom: 112px;
+  /* Set from main.ts for the pet's size; defaults match the normal size. */
+  bottom: var(--bubble-bottom, 112px);
   max-width: 212px;
   box-sizing: border-box;
   padding: 6px 9px;
@@ -60,7 +61,7 @@ body {
 #bubble::after {
   content: "";
   position: absolute;
-  right: 56px;
+  right: var(--tail-right, 56px);
   bottom: -9px;
   width: 6px;
   height: 6px;

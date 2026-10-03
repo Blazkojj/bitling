@@ -17,6 +17,7 @@ import {
   type Config,
   type Progress,
   type Rect,
+  SCALES,
 } from "./bridge.ts";
 import { CanvasRenderer } from "./renderer.ts";
 import { composeScene, PARTY_MS, type Hud } from "./scene.ts";
@@ -80,7 +81,7 @@ const renderer = new CanvasRenderer(canvas);
 const player = new AnimationPlayer();
 
 let progress: Progress | null = null;
-let config: Config = { skin: "classic", sound: false, bubbles: true, updates: true };
+let config: Config = { skin: "classic", sound: false, bubbles: true, updates: true, size: "normal" };
 let hovering = false;
 let hudUntil = 0;
 let partyStart = -Infinity;
@@ -306,7 +307,19 @@ function showManually(state: PetState): void {
 function applyConfig(next: Config): void {
   config = next;
   if (!config.bubbles) hideBubble();
+  applySize();
   render();
+}
+
+/** Scales the pet and keeps the bubble sitting just above its head. */
+function applySize(): void {
+  const scale = SCALES[config.size] ?? SCALES.normal;
+  renderer.setScale(scale);
+  const root = document.documentElement.style;
+  // The head starts 6 big pixels below the canvas top; the tail points at its middle.
+  root.setProperty("--bubble-bottom", `${18 * scale - 4 * scale}px`);
+  root.setProperty("--tail-right", `${8 * scale - 8}px`);
+  requestAnimationFrame(updateHitRegions);
 }
 
 // ---------------------------------------------------------------------------
@@ -414,11 +427,13 @@ async function main(): Promise<void> {
     else say(`Hi! I'm ${snapshot.name}. I'll keep an eye on your agents.`, "done");
   }
 
-  // Browser preview helpers: ?demo, ?state=done, ?hud, ?skin=gameboy, ?level=12, ?say=Hello
+  // Browser preview helpers: ?demo, ?state=done, ?hud, ?skin=gameboy, ?level=12, ?size=large, ?say=Hello
   const params = new URLSearchParams(location.search);
   if (!inTauri) {
     const skin = params.get("skin") as SkinId | null;
     if (skin && SKIN_IDS.includes(skin)) applyConfig({ ...config, skin });
+    const size = params.get("size") as Config["size"] | null;
+    if (size && size in SCALES) applyConfig({ ...config, size });
     const level = Number(params.get("level") ?? 0);
     if (level || params.has("hud")) progress = { xp: 130, level: level || 3, levelXp: 30, levelSize: 150 };
     if (params.has("hud")) hovering = true;
