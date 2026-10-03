@@ -1,12 +1,21 @@
 name: Release
 
-# Push a tag like v0.2.0 to build installers for every platform and attach
-# them to a draft GitHub release. Run it manually (workflow_dispatch) to only
-# build and download the installers as workflow artifacts.
+# Push a tag like v0.2.0 (or run it manually with a tag name) to build
+# installers for every platform and attach them to a draft GitHub release.
+# A manual run without a tag only builds and uploads workflow artifacts.
 on:
   push:
     tags: ["v*"]
   workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to create, e.g. v0.2.0 (empty: just build artifacts)"
+        required: false
+        default: ""
+
+env:
+  # The release tag: the pushed tag, or the one given to a manual run.
+  RELEASE_TAG: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || inputs.tag }}
 
 jobs:
   build:
@@ -54,8 +63,8 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           # Without a tag (manual run) tauri-action only builds.
-          tagName: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || '' }}
-          releaseName: Bitling ${{ github.ref_name }}
+          tagName: ${{ env.RELEASE_TAG }}
+          releaseName: Bitling ${{ env.RELEASE_TAG }}
           releaseBody: |
             Download the installer for your system below, start Bitling, then right-click the pet → **Connect Claude Code…**
           releaseDraft: true
@@ -63,7 +72,7 @@ jobs:
           args: ${{ matrix.args }}
 
       - name: Upload installers (manual runs)
-        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+        if: ${{ env.RELEASE_TAG == '' }}
         uses: actions/upload-artifact@v4
         with:
           name: bitling-${{ matrix.platform }}${{ contains(matrix.args, 'x86_64') && '-intel' || '' }}
