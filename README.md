@@ -2,14 +2,21 @@
 
 # Bitling
 
+[![CI](https://github.com/Blazkojj/bitling/actions/workflows/ci.yml/badge.svg)](https://github.com/Blazkojj/bitling/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/Blazkojj/bitling?include_prereleases&label=download)](https://github.com/Blazkojj/bitling/releases)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
 **A tiny pixel pet that lives in the corner of your screen and reacts to your AI coding agent.**
 
 It thinks while Claude works, waves a big **!** when it needs your approval, sweats when something
-breaks, and throws confetti when the job is done. Stop babysitting the terminal.
+breaks, throws confetti when the job is done, and naps when you're away. Stop babysitting the
+terminal.
 
-<img src="docs/states.gif" alt="Bitling's moods: idle, working, waiting for you, done, error" width="552">
+<img src="docs/states.gif" alt="Bitling's moods: idle, working, waiting for you, done, error, asleep" width="660">
 
-`idle` · `working` · `waiting for you` · `done` · `error`
+`idle` · `working` · `waiting for you` · `done` · `error` · `asleep`
+
+Works with **Claude Code**, **Gemini CLI**, **Codex CLI**, **Cursor**, **Aider** and **OpenCode**.
 
 [Download](https://github.com/Blazkojj/bitling/releases) · [Quick start](#quick-start) · [How it works](#how-it-works) · [Make it yours](#make-it-yours)
 
@@ -34,6 +41,7 @@ something you notice from the corner of your eye, without notifications nagging 
 | 🟨 jumps with a bouncing **!** | needs your permission or an answer |
 | 🟩 cheers between sparkles | finished the task |
 | ⬜ goes pale, X-eyed and sweating | hit an error |
+| 💤 falls asleep | nothing happened for 10 minutes (3 at night) |
 
 A speech bubble tells you *what* happened ("Bash wants to run `npm test`", "Fixed the login bug").
 Every finished task earns XP; your Bitling levels up, grows a sprout at level 5 and a crown at
@@ -45,8 +53,10 @@ level 10.
 - 💬 Speech bubbles with the agent's message, 🎵 optional chiptune sounds
 - 🎨 Hand-made 10×9 pixel art drawn in code, 4 skins (Classic, Pastel, Midnight, Game Boy)
 - ⭐ XP, levels, evolutions and a confetti party on level-up
-- 🔌 Works with **Claude Code** (one click, no Node.js needed), **Gemini CLI** and **Codex CLI**
-- 👥 Several agent sessions at once: a session waiting for you always wins
+- 🔌 Works with **Claude Code** (one click, no Node.js needed), **Gemini CLI**, **Codex CLI**,
+  **Cursor**, **Aider** and **OpenCode**
+- 👥 Several agents at once: one waiting for you always wins, bubbles say which project it is
+- 🔔 Tells you when a new version is out (once a day, can be turned off)
 - 🧭 Tray icon, remembers its position, launch at login
 - 🌐 Simple local HTTP API, so any tool, script or CI job can drive it
 - 🪶 Tauri 2 + plain TypeScript, no frontend framework, a few MB, no 60 fps loop
@@ -78,6 +88,9 @@ Then connect your agent, either from the pet's right-click menu (Claude Code) or
 npm run hooks:install                    # Claude Code
 npm run hooks:install -- --agent gemini  # Gemini CLI
 npm run hooks:install -- --agent codex   # Codex CLI
+npm run hooks:install -- --agent cursor  # Cursor
+npm run hooks:install -- --agent aider   # Aider
+npm run hooks:install -- --agent opencode  # OpenCode
 ```
 
 > **No agent at hand?** Right-click → **Play demo**, or `npm run demo`.
@@ -89,14 +102,15 @@ npm run hooks:install -- --agent codex   # Codex CLI
 | **Drag** | Move the pet (it remembers where) |
 | **Click** | "Seen it": calm the pet down, dismiss the bubble |
 | **Hover** | Show level and XP bar |
-| **Right-click** / tray icon | Demo, states, skins, sounds, bubbles, launch at login, connect/disconnect Claude Code, quit |
-| Keys **1–5**, **D**, **S**, **L** | Idle / done / waiting / error / working, demo, next skin, level-up party (when focused) |
+| **Right-click** / tray icon | Demo, states, skins, sounds, bubbles, launch at login, updates, connect/disconnect Claude Code, quit |
+| Keys **1–6**, **D**, **S**, **L** | Idle / done / waiting / error / working / asleep, demo, next skin, level-up party (when focused) |
 
 ## How it works
 
 ```
-Claude Code ──HTTP hook──────────────────────────────▶ Bitling (127.0.0.1:47800)
-Gemini CLI / Codex ──▶ node ~/.bitling/bitling-hook.mjs ─┘
+Claude Code ─────── HTTP hook ─────────────────────────────┐
+Gemini · Codex · Cursor · Aider ─▶ ~/.bitling/bitling-hook.mjs ─┼─▶ Bitling (127.0.0.1:47800)
+OpenCode ─────── plugin ───────────────────────────────────┘
 ```
 
 **Claude Code.** "Connect Claude Code…" in the app adds `type: "http"` hooks to
@@ -111,15 +125,20 @@ the other one's hooks are cleaned up.
 | `PostToolUseFailure`, `StopFailure` | error |
 | `Stop` | done (+10 XP, bubble with the first line of Claude's answer) |
 
-**Gemini CLI** hooks `BeforeAgent`, `AfterTool`, `Notification` (`ToolPermission`) and
-`AfterAgent` in `~/.gemini/settings.json`. **Codex CLI** gets one `notify` line in
-`~/.codex/config.toml` (Codex only reports finished turns).
+| Agent | Where | What Bitling sees |
+| --- | --- | --- |
+| Gemini CLI | `~/.gemini/settings.json` | `BeforeAgent`, `AfterTool` (error if the tool failed), `Notification` (`ToolPermission`), `AfterAgent` |
+| Codex CLI | `notify` in `~/.codex/config.toml` | finished turns only |
+| Cursor | `~/.cursor/hooks.json` | `beforeSubmitPrompt`, `afterFileEdit`, `afterShellExecution`, `stop` (completed / error / aborted) |
+| Aider | `notifications_command` in `~/.aider.conf.yml` | finished, waiting for you |
+| OpenCode | plugin in `~/.config/opencode/plugins/` | busy, `permission.asked`, `session.error`, `session.idle` |
 
-Hooks never get in the agent's way: they return in ~0.1 s, never print to stdout (except the `{}`
-Gemini expects), always exit 0 and give up after 1.5 s when Bitling isn't running.
+Hooks never get in the agent's way: they return in ~0.1 s, print nothing the agent doesn't expect,
+always exit 0 and give up after 1.5 s when Bitling isn't running. The installers never overwrite
+an existing `notify` / `notifications_command`, and always back up the file they change.
 
 Remove everything with right-click → **Disconnect Claude Code**, or
-`npm run hooks:uninstall [-- --agent gemini|codex]`.
+`npm run hooks:uninstall [-- --agent gemini|codex|cursor|aider|opencode]`.
 
 ## HTTP API
 
@@ -134,7 +153,7 @@ curl -X POST http://127.0.0.1:47800/event \
 
 | Route | Description |
 | --- | --- |
-| `POST /event` | `{"state": "idle" \| "working" \| "done" \| "waiting" \| "error", "source"?, "message"?, "session"?}`, or a raw Claude Code hook payload |
+| `POST /event` | `{"state": "idle" \| "working" \| "done" \| "waiting" \| "error", "source"?, "message"?, "session"?, "project"?}`, or a raw Claude Code hook payload |
 | `GET /state` | Current state, XP and active sessions |
 | `GET /health` | `{"ok": true, "app": "bitling", "version": "..."}` |
 | `POST /show` | Bring the window back |
@@ -179,14 +198,14 @@ position) and the hook script.
 
 - [x] Transparent always-on-top pet with animated states, speech bubbles, sounds
 - [x] Claude Code: one-click connect from the app, Node installer as an alternative
-- [x] Gemini CLI and Codex CLI adapters
-- [x] XP, levels, evolutions, level-up party, skins
-- [x] Multiple sessions, tray, remembered position, launch at login, single instance
-- [x] Prebuilt installers via GitHub Actions
-- [ ] More agents (Cursor, Aider, OpenCode...) and editor extensions
-- [ ] More moods (sleepy at night, bored when idle for long), more evolutions
-- [ ] Signed and notarized builds, auto-update
-- [ ] Bitling friends: one pet per project
+- [x] Gemini CLI, Codex CLI, Cursor, Aider and OpenCode adapters
+- [x] XP, levels, evolutions, level-up party, skins, a sleepy mood
+- [x] Multiple sessions with project names, tray, remembered position, launch at login, single instance
+- [x] Prebuilt installers via GitHub Actions, update notifications
+- [ ] Signed and notarized builds with one-click auto-update (needs signing certificates)
+- [ ] Editor extensions (VS Code, JetBrains) that talk to the HTTP API
+- [ ] More moods and evolutions, community skins gallery
+- [ ] Bitling friends: one pet per project, side by side
 
 ## Troubleshooting
 
@@ -201,7 +220,8 @@ position) and the hook script.
 
 ## Contributing
 
-Issues and PRs are welcome, especially sprites, skins, agent adapters and platform fixes.
+Issues and PRs are welcome, especially sprites, skins, agent adapters and platform fixes. See
+[CONTRIBUTING.md](CONTRIBUTING.md) for how to add a skin, a mood or a new agent.
 
 ```bash
 npm run dev      # frontend only, in the browser

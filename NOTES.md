@@ -38,8 +38,9 @@ The whole original roadmap is implemented:
 ## Architecture
 
 ```
-hooks/bitling-hook.mjs        hook script for Claude/Gemini/Codex (copied to ~/.bitling/)
-scripts/install-hooks.mjs     CLI installer (--agent claude|gemini|codex)
+hooks/bitling-hook.mjs        hook script for Claude/Gemini/Codex/Cursor/Aider (copied to ~/.bitling/)
+hooks/opencode-bitling.js     OpenCode plugin (copied to ~/.config/opencode/plugins/)
+scripts/install-hooks.mjs     CLI installer (--agent claude|gemini|codex|cursor|aider|opencode)
 scripts/lib/agents.mjs        pure config merge logic for all agents + node:test tests
 scripts/demo.mjs              drives a running app over HTTP
 scripts/render-sprites.mjs    PNG/GIF/icon export from the sprite data
@@ -49,6 +50,7 @@ src/scene.ts                  frame → 16x18 color grid: outline, shadow, HUD, 
 src/animation.ts              steps through frames in real time
 src/renderer.ts               paints a scene on the canvas (DPR-aware)
 src/sound.ts                  WebAudio jingles
+src/updates.ts                daily GitHub "latest release" check
 src/bridge.ts                 all Tauri calls; no-ops in a plain browser
 src/main.ts                   wiring: input, bubbles, demo, agent events, hit regions
 src-tauri/src/main.rs         setup, plugins, commands, shared state
@@ -103,6 +105,19 @@ Data flow: hook → `POST /event` → `AppSink::on_event` (sessions, XP, save) �
 14. **XP:** 10 per done, level L needs `25·L·(L−1)` total XP; `source: "demo"` earns nothing.
 15. **Data in `~/.bitling/`** (state, config, hook script); `BITLING_HOME` overrides.
 16. **Sounds are synthesized** (WebAudio square/triangle waves), off by default.
+17. **Adapters:** Cursor's `beforeSubmitPrompt` gets `{"continue":true}` on stdout and its `stop`
+    status maps to done/error/idle; Aider's `notifications_command` (run with `shell=True`) is the
+    only signal Aider gives; OpenCode runs on Bun, so its adapter is a plugin calling `fetch`
+    directly. Installers refuse to replace a user's own Codex `notify` / Aider command.
+18. **Sleep** is the pet's own mood (not in the protocol: `AgentState = Exclude<PetState,
+    "sleep">`): 10 quiet minutes, 3 at night (22:00–06:00), only from idle/done and never during
+    demo or while a bubble is up. Thin Z glyphs are "floating stamps" drawn after the outline.
+19. **Project names:** hooks send the folder name (`cwd`, Cursor `workspace_roots[0]`, OpenCode
+    `directory`); bubbles show `[project]` only when 2+ sessions are active, to avoid clutter.
+20. **Updates are notify-only:** the frontend fetches `releases/latest` once a day (CSP allows
+    `https://api.github.com` only), the backend accepts the URL only if it starts with this
+    repository's releases page, and the menu opens it in the browser. Real auto-update would need
+    the Tauri updater plus a signing key stored as a GitHub secret.
 
 ## Known issues / edge cases
 
